@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,6 +49,11 @@ func TestWindowsOpenDesktopMigratesWithBusyScratch(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer windows.CloseHandle(handle)
+			// Keep the file busy even on filesystems that do not enforce share modes.
+			if err = windows.LockFileEx(handle, windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &windows.Overlapped{}); err != nil {
+				t.Fatal(err)
+			}
+			requireBusyFile(t, path)
 			_, err = app.MigrateStorage(target)
 			if scratch {
 				if err != nil {
@@ -68,5 +75,22 @@ func TestWindowsOpenDesktopMigratesWithBusyScratch(t *testing.T) {
 				t.Fatal("desktop workspace not available after migration attempt")
 			}
 		})
+	}
+}
+
+// requireBusyFile rejects filesystems that silently allow a second reader, so
+// a migration failure below can only come from the held file, not the sandbox.
+func requireBusyFile(t *testing.T, path string) {
+	t.Helper()
+	file, err := os.Open(path)
+	if err == nil {
+		defer file.Close()
+		if _, readErr := io.ReadAll(file); readErr == nil {
+			t.Fatal("test filesystem does not enforce Windows sharing or byte-range locks")
+		}
+		return
+	}
+	if !errors.Is(err, windows.ERROR_SHARING_VIOLATION) && !errors.Is(err, windows.ERROR_LOCK_VIOLATION) {
+		t.Fatalf("unexpected busy-file probe error: %v", err)
 	}
 }

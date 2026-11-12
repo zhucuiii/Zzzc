@@ -11,7 +11,9 @@ import (
 	"testing"
 )
 
-func denySharing(t *testing.T, path string) func() {
+// holdBusyFile denies read sharing and also takes a mandatory byte-range lock.
+// The lock keeps the file busy on filesystems that do not enforce share modes.
+func holdBusyFile(t *testing.T, path string) func() {
 	t.Helper()
 	name, err := windows.UTF16PtrFromString(path)
 	if err != nil {
@@ -19,6 +21,9 @@ func denySharing(t *testing.T, path string) func() {
 	}
 	handle, err := windows.CreateFile(name, windows.GENERIC_READ, 0, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := windows.LockFileEx(handle, windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &windows.Overlapped{}); err != nil {
 		t.Fatal(err)
 	}
 	closed := false
@@ -36,7 +41,7 @@ func denySharing(t *testing.T, path string) func() {
 
 func TestWindowsLockedScratchMigrationAndCleanupRetry(t *testing.T) {
 	source, target := scratchFixture(t)
-	release := denySharing(t, filepath.Join(source, "cache/tmp/busy.tmp"))
+	release := holdBusyFile(t, filepath.Join(source, "cache/tmp/busy.tmp"))
 	files, err := Snapshot(source)
 	if err != nil {
 		t.Fatal(err)
@@ -93,12 +98,59 @@ func TestWindowsLockedScratchMigrationAndCleanupRetry(t *testing.T) {
 func TestWindowsLockedDurableFileStopsMigration(t *testing.T) {
 	source, target := scratchFixture(t)
 	path := filepath.Join(source, "resources/original.tmp")
-	release := denySharing(t, path)
+	release := holdBusyFile(t, path)
 	if _, err := Snapshot(source); err == nil {
 		t.Fatal("snapshot ignored locked durable file")
 	}
 	if err := CopyClosedWorkspace(context.Background(), source, target); err == nil {
 		t.Fatal("copy ignored locked durable file")
+	}
+	release()
+	if body, err := os.ReadFile(path); err != nil || string(body) != "resources/original.tmp" {
+		t.Fatal("source lost", err)
+	}
+	entries, err := os.ReadDir(target)
+	if err != nil || len(entries) != 0 {
+		t.Fatal("published incomplete target", err)
+	}
+}
+
+func holdByteRangeLock(t *testing.T, path string) func() {
+	t.Helper()
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := windows.CreateFile(name, windows.GENERIC_READ|windows.GENERIC_WRITE, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := windows.LockFileEx(handle, windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &windows.Overlapped{}); err != nil {
+		t.Fatal(err)
+	}
+	closed := false
+	release := func() {
+		if !closed {
+			if err := windows.CloseHandle(handle); err != nil {
+				t.Fatal(err)
+			}
+			closed = true
+		}
+	}
+	t.Cleanup(release)
+	return release
+}
+
+// Byte-range locks must stop durable reads even when the holder allows sharing.
+func TestWindowsByteRangeLockedDurableFileStopsMigration(t *testing.T) {
+	source, target := scratchFixture(t)
+	path := filepath.Join(source, "resources/original.tmp")
+	release := holdByteRangeLock(t, path)
+	if _, err := Snapshot(source); err == nil {
+		t.Fatal("snapshot ignored byte-range locked durable file")
+	}
+	if err := CopyClosedWorkspace(context.Background(), source, target); err == nil {
+		t.Fatal("copy ignored byte-range locked durable file")
 	}
 	release()
 	if body, err := os.ReadFile(path); err != nil || string(body) != "resources/original.tmp" {
