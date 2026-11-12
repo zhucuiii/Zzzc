@@ -18,8 +18,10 @@ var (
 )
 
 const (
-	DefaultFeedURL  = "https://updates.beefapi.com/beeftv/desktop-update-v2.json"
-	LegacyFeedURL   = "https://updates.beefapi.com/beeftv/desktop-update.json"
+	// 二次开发：更新源改为本项目的 GitHub Releases。
+	// latest/download/ 前缀由 GitHub 自动重定向到最新发布，无需每次改版本号。
+	DefaultFeedURL  = "https://github.com/zhucuiii/Zzzc/releases/latest/download/desktop-update-v2.json"
+	LegacyFeedURL   = ""
 	helperFlag      = "--beeftv-update-helper"
 	appBundleName   = "BeefTV.app"
 	linuxBundleName = "BeefTV-linux"
