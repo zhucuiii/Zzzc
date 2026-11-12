@@ -1,71 +1,47 @@
-BeefTV
-Copyright (C) 2026 BeefTV contributors
+Zzzc
+====
 
-BeefTV uses scoped licensing. New original material first introduced under
-the BeefTV Source Available License 1.0 is governed by Part A of LICENSE
-only to the extent its copyright holders can license it under those terms.
-Previously MIT-licensed material remains under MIT, whose complete original
-text and copyright notices are preserved in Part B of LICENSE.
+本项目基于 BeefTV v2.2.1 二次开发。
 
-The transition begins with the commit introducing Part A. All previously
-MIT-licensed material is excluded from the new restrictions, including the
-existing material in commits a96baf082f478901ed558c91a80bc29dfade523c and
-2327ee2d80282b10dd8bef0f26b48990d46f5c3b. These examples do not limit the
-preservation of other historical MIT grants. In mixed files, new eligible
-original additions and historical portions retain their respective terms.
-There is no retroactive restriction on existing MIT permissions.
+上游来源
+--------
 
-Project scope
--------------
+项目名称：BeefTV
+仓库：https://github.com/glanderness/BeefTV
+基线提交：d2b5fef39d088bbab26ae0c931c408b1361989d3
 
-BeefTV is a local-first, single-user desktop workspace for AI-assisted video
-creation. The desktop application uses a React user interface embedded by
-Wails and a Go backend that listens on loopback. Projects, canvas state,
-generated assets, model-channel settings, and durable task state are stored in
-the user's local workspace. Requests leave the device only when a user invokes
-an externally configured model provider or another explicitly networked tool.
-
-Upstream source
----------------
-
-This repository contains code derived from:
-
-  Infinite Canvas
-  https://github.com/basketikun/infinite-canvas
-  Base version: v0.5.0
-  Base commit: 568f0f1838df8de31fe885a4e130e2f346dd14ab
-
-The upstream project is maintained under the basketikun account. Upstream
-authors and contributors retain copyright in their respective contributions.
-The upstream project was relicensed to MIT in commit
-890ba95858bbb13496d23978003716656109abb2. Its copyright and permission notice
-are preserved in Part B of LICENSE. The new source-available restrictions do
-not replace the upstream license or the upstream authors' rights.
-
-BeefTV changes
+原项目版权声明
 --------------
 
-BeefTV adds and maintains the local Go application layer, SQLite and local
-asset persistence, durable generation tasks, provider and protocol adapters,
-the Wails desktop shell, media workflows, timeline tools, the local Agent, and
-substantial canvas and workspace UI changes.
+Copyright (c) 2026 @beefnoode and BeefTV contributors
+Copyright (c) 2026 basketikun
+Copyright (c) 2026 ddcat
 
-Third-party software and assets
--------------------------------
+上游许可以 MIT 发布，原文如下：
 
-Dependencies and bundled assets remain subject to the licenses and notices of
-their respective authors. Important runtime components include Wails,
-FFmpeg.wasm, Excalidraw, MediaPipe, React, Gin, GORM, and SQLite bindings.
-Provider and product names are used only to identify compatible protocols or
-services and do not imply affiliation or endorsement.
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
 
-GPL-governed material and material whose distribution must use an
-incompatible license are outside Part A. An exclusion alone does not resolve
-the licensing of a combined work; distributors must comply with all
-applicable terms and must not distribute incompatible combinations without
-the necessary compatible permissions.
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
 
-See THIRD_PARTY_NOTICES.md for dependency and bundled-asset notices. This
-inventory and its name-coverage audit are not a complete compatibility or
-corresponding-source audit. See docs/content/docs/overview/licensing.mdx for
-the practical scope of the source-available policy.
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+已获原作者同意对本项目进行自由开发与品牌调整。
+
+第三方依赖
+----------
+
+本项目使用的第三方库、字体、图标与素材，其各自的许可证详见
+THIRD_PARTY_NOTICES.md。这些组件的许可证独立于本项目许可证，
+使用时须遵守其各自条款。
