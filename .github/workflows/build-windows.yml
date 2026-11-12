@@ -1,0 +1,88 @@
+name: Build Windows installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_version:
+        description: 版本号（需与 VERSION 文件一致，如 v1.0.0）
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  build:
+    name: Windows amd64
+    runs-on: windows-2022
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+
+      - name: Install MSYS2 UCRT64 GCC
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          release: true
+          path-type: inherit
+          install: mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-binutils
+
+      - name: Assert CGO compiler
+        env:
+          MSYSTEM_PREFIX: ${{ steps.msys2.outputs.msys2-location }}\ucrt64
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\assert-windows-dwarf5-cgo.ps1
+
+      - name: Build Windows desktop
+        env:
+          CGO_ENABLED: "1"
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-beeftv-windows-release.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          if (!(Test-Path 'C:\Program Files (x86)\NSIS\makensis.exe')) {
+            choco install nsis --no-progress -y
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Package installer
+        working-directory: backend
+        env:
+          VERSION: ${{ github.event.inputs.confirm_version }}
+          PLATFORM: windows-amd64
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ../dist
+          python ../scripts/package-desktop-installer.py --platform "$PLATFORM"
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: zzzc-windows-${{ github.event.inputs.confirm_version }}
+          path: dist/**
+          retention-days: 30
