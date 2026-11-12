@@ -122,6 +122,9 @@ NODE
 
 if ((UPLOAD)); then
     echo "=== 上传至 GitHub Releases ==="
+    git tag -a "$VERSION" -m "Zzzc $VERSION" "$COMMIT"
+    git push origin main
+    git push origin "$VERSION"
     gh release create "$VERSION" "$ZIP" "$MANIFEST" \
         --repo "$REPO" --title "Zzzc $VERSION" \
         --notes "${NOTES:-Zzzc $VERSION 发布}" --verify-tag
