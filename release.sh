@@ -97,7 +97,6 @@ COMMIT="$(git rev-parse HEAD)"
     -asset "windows-amd64=$ZIP" \
     -download-base "https://github.com/$REPO/releases/download" \
     -notes "${NOTES:-Zzzc $VERSION 发布}" \
-    -private-key "$KEY_FILE" \
     -expect-public-key "$PUBLIC_KEY" \
     -output "$MANIFEST")
 
