@@ -256,8 +256,9 @@ export function useCanvasSelectionController({
 
         historyPausedRef.current = false;
         nodeDraggingRef.current = false;
+        // The preview helper owns the dragging flag; it keeps transitions off
+        // through the committed geometry so the released node does not fly.
         applyCanvasNodeDragPreview(containerRef.current, null);
-        delete containerRef.current?.dataset.canvasNodeDragging;
         setIsNodeDragging(false);
         setDragPreview(null);
         setAlignmentGuides({});
@@ -423,7 +424,6 @@ export function useCanvasSelectionController({
             if (dragFrameRef.current) cancelAnimationFrame(dragFrameRef.current);
             if (selectionFrameRef.current) cancelAnimationFrame(selectionFrameRef.current);
             applyCanvasNodeDragPreview(containerRef.current, null);
-            delete containerRef.current?.dataset.canvasNodeDragging;
             window.removeEventListener("mousemove", onMouseMove);
             window.removeEventListener("mouseup", handleMouseUp);
             window.removeEventListener("pointermove", onPointerMove);

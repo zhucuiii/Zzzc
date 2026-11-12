@@ -8808,6 +8808,32 @@ html:not(.dark) .creation-studio-control:hover,
     box-shadow: 0 14px 34px rgba(0, 0, 0, .42);
 }
 
+/* 节点几何变化（切比例、生成占位框、程序化排布）跟随同一段过渡：宽高与位置一起走，
+   画布内的节点和下方输入面板才会同步。拖拽、画布手势、手动 resize 期间必须瞬时跟手。 */
+.node-element {
+    transition:
+        width 340ms var(--motion-ease-out),
+        height 340ms var(--motion-ease-out),
+        transform 340ms var(--motion-ease-out);
+}
+
+[data-canvas-node-dragging="true"] .node-element,
+[data-canvas-viewport-interacting="true"] .node-element,
+[data-canvas-node-resizing="true"] .node-element {
+    transition: none !important;
+}
+
+/* 面板首帧先落位，之后才按同一时长跟随节点；交互期由 data-panel-animated 关闭过渡。 */
+[data-canvas-node-panel] {
+    transition: none;
+}
+
+[data-canvas-node-panel][data-panel-animated="true"] {
+    transition:
+        transform 340ms var(--motion-ease-out),
+        width 340ms var(--motion-ease-out);
+}
+
 .canvas-node-shell {
         box-shadow: none;
         transition: transform 160ms ease-out;
@@ -11109,6 +11135,18 @@ html:not(.dark) .creation-studio-control:hover,
 @keyframes workspace-state-enter {
     from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .node-element,
+    [data-canvas-node-panel][data-panel-animated="true"] {
+        transition: none !important;
+    }
+}
+
+.no-motion .node-element,
+.no-motion [data-canvas-node-panel][data-panel-animated="true"] {
+    transition: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

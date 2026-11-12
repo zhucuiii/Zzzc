@@ -96,6 +96,14 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
     const { bringToFront, zIndex } = useCanvasOverlayLayer(`node-panel:${node.id}`, "var(--z-modal-overlay)");
     const initialWidth = resolveNodePanelWidth(node, viewport, panelWidth, panelMinWidth, panelMaxWidth, panelWidthScale);
     const initialPosition = getNodePanelPosition(node, viewport, { width: containerRef.current?.clientWidth || 0, height: containerRef.current?.clientHeight || 0 }, initialWidth, panelHeight, dragOffset, keepBelowNode, avoidBottomDock);
+    // The drag preview updates this ref every frame. Keeping it out of the
+    // layout-effect deps avoids tearing down the ResizeObserver and viewport
+    // subscriptions on each drag frame.
+    const dragOffsetRef = useRef(dragOffset);
+    dragOffsetRef.current = dragOffset;
+    // The panel mounts at its final position; the geometry transition only
+    // turns on after the first paint so nothing flies in from the origin.
+    const animatedRef = useRef(false);
 
     useLayoutEffect(() => {
         bringToFront();
@@ -106,22 +114,62 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
         const panel = panelRef.current;
         if (!container || !panel) return;
         let liveViewport = viewport;
-        let liveDragOffset = dragOffset;
+        let liveDragOffset = dragOffsetRef.current;
         let viewportSize = { width: container.clientWidth, height: container.clientHeight };
+        let transitionEnabled: boolean | undefined;
+        let suppressTransition = false;
+        const isInteracting = () => container.dataset.canvasNodeDragging === "true"
+            || container.dataset.canvasViewportInteracting === "true"
+            || container.dataset.canvasNodeResizing === "true";
+        const syncPanelTransition = () => {
+            const next = animatedRef.current && !isDragging && !isInteracting() && !suppressTransition;
+            if (next === transitionEnabled) return;
+            transitionEnabled = next;
+            if (next) panel.dataset.panelAnimated = "true";
+            else delete panel.dataset.panelAnimated;
+        };
         const update = (nextViewport: ViewportTransform) => {
             liveViewport = nextViewport;
+            // Toggle before writing geometry so a drag/pan/resize frame never
+            // starts a transition toward the frame's target.
+            syncPanelTransition();
             const nextWidth = resolveNodePanelWidth(node, nextViewport, panelWidth, panelMinWidth, panelMaxWidth, panelWidthScale);
             panel.style.width = `${nextWidth}px`;
-            const nodeElement = container.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(node.id)}"]`);
+            // While a gesture is live the committed props lag the compositor
+            // transform, so the panel must follow the measured node rect.
+            // Outside gestures the DOM still reports the *old* rect during the
+            // commit that starts a geometry transition; using it would pin the
+            // panel destination to the pre-change geometry and break the
+            // node/panel sync. Props describe the transition targets.
+            const nodeElement = isInteracting() ? container.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(node.id)}"]`) : null;
             const position = nodeElement
                 ? getAttachedNodePanelPosition(nodeElement, container, nextWidth, panelHeight, keepBelowNode, avoidBottomDock)
                 : getNodePanelPosition(node, nextViewport, viewportSize, nextWidth, panelHeight, liveDragOffset, keepBelowNode, avoidBottomDock);
             panel.style.transform = `translate3d(${position.left}px, ${position.top}px, 0)`;
         };
         update(viewport);
+        // Enable the geometry transition only after the first painted frame.
+        let enableFrame: number | null = null;
+        if (!animatedRef.current) {
+            enableFrame = requestAnimationFrame(() => {
+                enableFrame = null;
+                animatedRef.current = true;
+                update(liveViewport);
+            });
+        }
         const resizeObserver = new ResizeObserver(() => {
-            viewportSize = { width: container.clientWidth, height: container.clientHeight };
+            const nextSize = { width: container.clientWidth, height: container.clientHeight };
+            if (nextSize.width === viewportSize.width && nextSize.height === viewportSize.height) return;
+            viewportSize = nextSize;
+            // Viewport resize is a discrete layout change: land on the clamped
+            // position immediately, then allow the next node resize to animate.
+            suppressTransition = true;
             update(liveViewport);
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                if (!panel.isConnected) return;
+                suppressTransition = false;
+                update(liveViewport);
+            }));
         });
         resizeObserver.observe(container);
         const unsubscribeViewport = subscribeCanvasGraphicsViewportPreview(container, update);
@@ -129,12 +177,18 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
             liveDragOffset = preview?.nodeIds.has(node.id) ? { x: preview.x, y: preview.y } : null;
             update(liveViewport);
         });
+        // Interaction flags live on the viewport (not on the panel's parent).
+        // Re-sync when they clear so the next geometry change animates again.
+        const attributeObserver = new MutationObserver(() => update(liveViewport));
+        attributeObserver.observe(container, { attributes: true, attributeFilter: ["data-canvas-node-dragging", "data-canvas-viewport-interacting", "data-canvas-node-resizing"] });
         return () => {
+            if (enableFrame !== null) cancelAnimationFrame(enableFrame);
+            attributeObserver.disconnect();
             resizeObserver.disconnect();
             unsubscribeViewport();
             unsubscribeDrag();
         };
-    }, [avoidBottomDock, containerRef, dragOffset?.x, dragOffset?.y, isDragging, keepBelowNode, node.height, node.id, node.position.x, node.position.y, node.width, panelHeight, panelMaxWidth, panelMinWidth, panelWidth, panelWidthScale, viewport]);
+    }, [avoidBottomDock, containerRef, isDragging, keepBelowNode, node.height, node.id, node.position.x, node.position.y, node.width, panelHeight, panelMaxWidth, panelMinWidth, panelWidth, panelWidthScale, viewport]);
 
     return (
         <div

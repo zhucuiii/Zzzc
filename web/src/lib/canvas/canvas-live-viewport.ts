@@ -27,6 +27,8 @@ type NodeDragPreviewDomState = {
     previousIds: Set<string>;
     compactTransform?: { element: HTMLElement; transform: string; origin: string };
     selectionBounds: HTMLElement | null;
+    dragging: boolean;
+    releaseFrame?: number;
 };
 
 type NodeSelectionPreviewDomState = {
@@ -159,12 +161,33 @@ export function subscribeCanvasViewportPreview(container: HTMLDivElement, listen
 export function applyCanvasNodeDragPreview(container: HTMLDivElement | null, preview: CanvasNodeDragPreview | null) {
     if (!container) return;
     if (preview) container.dataset.canvasNodeDragging = "true";
-    else delete container.dataset.canvasNodeDragging;
 
     let state = nodeDragPreviewDomStates.get(container);
     if (!state) {
-        state = { elementsById: new Map(), previousIds: new Set(), selectionBounds: null };
+        state = { elementsById: new Map(), previousIds: new Set(), selectionBounds: null, dragging: false };
         nodeDragPreviewDomStates.set(container, state);
+    }
+    state.dragging = Boolean(preview);
+
+    if (preview) {
+        if (state.releaseFrame !== undefined) {
+            cancelAnimationFrame(state.releaseFrame);
+            state.releaseFrame = undefined;
+        }
+    } else if (container.dataset.canvasNodeDragging === "true" && state.releaseFrame === undefined) {
+        // Drop commits the dragged positions in the same task. Keep the
+        // "no transition" flag through that commit and its paint; otherwise the
+        // re-enabled geometry transition animates from the pre-drag position.
+        if (typeof requestAnimationFrame !== "function") {
+            delete container.dataset.canvasNodeDragging;
+        } else {
+            state.releaseFrame = requestAnimationFrame(() => {
+                state!.releaseFrame = requestAnimationFrame(() => {
+                    state!.releaseFrame = undefined;
+                    if (!state!.dragging) delete container.dataset.canvasNodeDragging;
+                });
+            });
+        }
     }
 
     if (state.compactTransform) {

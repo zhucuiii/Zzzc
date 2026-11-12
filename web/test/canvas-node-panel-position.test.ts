@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { createElement, type RefObject } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
-import { CANVAS_MAIN_DOCK_CLEARANCE, getNodePanelPosition } from "@/components/canvas/canvas-workspace-overlays";
+import { CANVAS_MAIN_DOCK_CLEARANCE, CanvasNodePanelOverlay, getNodePanelPosition } from "@/components/canvas/canvas-workspace-overlays";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
 const mediaNode = {
@@ -31,6 +33,27 @@ describe("canvas media prompt panel placement", () => {
         const source = await Bun.file(new URL("../src/pages/canvas/project.tsx", import.meta.url)).text();
 
         expect(source).toContain("keepBelowNode={dialogNode.type === CanvasNodeType.Image || dialogNode.type === CanvasNodeType.Video || dialogNode.type === CanvasNodeType.Audio}");
+    });
+
+    test("computes the first-selection position during render instead of relying on a (0,0) default", () => {
+        const node = {
+            id: "image-ratio",
+            type: CanvasNodeType.Image,
+            position: { x: 240, y: 120 },
+            width: 720,
+            height: 405,
+        } as CanvasNodeData;
+        const containerRef = { current: { clientWidth: 1400, clientHeight: 900 } } as unknown as RefObject<HTMLDivElement | null>;
+        const html = renderToStaticMarkup(
+            createElement(CanvasNodePanelOverlay, { node, viewport: { x: 0, y: 0, k: 1 }, containerRef, keepBelowNode: true }, createElement("span")),
+        );
+
+        // 920px panel centered under the 720px node at (240,120).
+        expect(html).toContain("transform:translate3d(140px, 541px, 0)");
+        expect(html).toContain("width:920px");
+        expect(html).not.toContain("translate3d(0px, 0px, 0)");
+        // The geometry transition is enabled only after the first paint.
+        expect(html).not.toContain("data-panel-animated");
     });
 
     test("video trim panel stays above the main dock without flipping over the node", () => {

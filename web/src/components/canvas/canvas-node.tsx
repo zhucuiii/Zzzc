@@ -178,6 +178,10 @@ export const CanvasNode = React.memo(function CanvasNode({
         keepRatio: false,
         ratio: 1,
     });
+    // Manual resize must bypass the node/panel geometry transition; the flag
+    // lives on the canvas viewport so both surfaces can read it.
+    const resizeViewportRef = useRef<HTMLElement | null>(null);
+    const resizeTokenRef = useRef(0);
 
     useEffect(() => {
         const textarea = textareaRef.current;
@@ -259,6 +263,17 @@ export const CanvasNode = React.memo(function CanvasNode({
 
     const handleResizeUp = useCallback(() => {
         resizeRef.current.isResizing = false;
+        const viewport = resizeViewportRef.current;
+        resizeViewportRef.current = null;
+        if (viewport) {
+            // The last pointer-move commit may still be pending; keep the flag
+            // through that paint so the final size does not animate.
+            const token = ++resizeTokenRef.current;
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                if (resizeTokenRef.current !== token) return;
+                delete viewport.dataset.canvasNodeResizing;
+            }));
+        }
         window.removeEventListener("mousemove", handleResizeMove);
         window.removeEventListener("mouseup", handleResizeUp);
     }, [handleResizeMove]);
@@ -266,6 +281,12 @@ export const CanvasNode = React.memo(function CanvasNode({
     const handleResizeMouseDown = (event: React.MouseEvent, corner: ResizeCorner) => {
         event.stopPropagation();
         event.preventDefault();
+        const viewport = event.currentTarget.closest<HTMLElement>("[data-canvas-viewport]");
+        if (viewport) {
+            resizeTokenRef.current += 1;
+            resizeViewportRef.current = viewport;
+            viewport.dataset.canvasNodeResizing = "true";
+        }
         resizeRef.current = {
             isResizing: true,
             corner,
@@ -286,6 +307,9 @@ export const CanvasNode = React.memo(function CanvasNode({
         return () => {
             window.removeEventListener("mousemove", handleResizeMove);
             window.removeEventListener("mouseup", handleResizeUp);
+            resizeTokenRef.current += 1;
+            resizeViewportRef.current?.removeAttribute("data-canvas-node-resizing");
+            resizeViewportRef.current = null;
         };
     }, [handleResizeMove, handleResizeUp]);
 

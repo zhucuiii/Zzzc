@@ -11,7 +11,8 @@ describe("canvas node title interaction", () => {
     test("disables iframe hit testing only during node dragging", () => {
         expect(canvasStylesSource).toMatch(/\[data-canvas-node-dragging="true"\] \.node-element iframe\s*\{\s*pointer-events: none;/);
         expect(liveViewportSource).toContain('if (preview) container.dataset.canvasNodeDragging = "true"');
-        expect(liveViewportSource).toContain('else delete container.dataset.canvasNodeDragging');
+        // Drop keeps the flag through the committed paint, then clears it.
+        expect(liveViewportSource).toContain('if (!state!.dragging) delete container.dataset.canvasNodeDragging');
     });
     test("exposes a drag handle without bypassing read-only or locked nodes", () => {
         expect(nodeSource).toContain('onDragStart={readOnly ? undefined : (event) => onMouseDown(event, data.id)}');
