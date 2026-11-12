@@ -23,6 +23,8 @@ test-evidence/
 /prompt*-before.png
 assets/prototypes/.*.drawio.bkp
 .settings-key
+.secrets/
+.release.env
 .DS_Store
 .idea/
 .fleet/
