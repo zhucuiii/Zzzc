@@ -28,7 +28,7 @@ done
 [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { usage; exit 2; }
 [[ -f "$KEY_FILE" ]] || { echo "缺少本机签名密钥: $KEY_FILE（不会被提交）" >&2; exit 1; }
 
-for tool in go bun node powershell git cygpath; do
+for tool in go bun node powershell git; do
     command -v "$tool" >/dev/null || { echo "缺少构建工具: $tool" >&2; exit 1; }
 done
 if ((UPLOAD)); then
@@ -84,9 +84,15 @@ ZIP="$OUTPUT_DIR/BeefTV-$VERSION-windows-amd64.zip"
 MANIFEST="$OUTPUT_DIR/desktop-update-v2.json"
 rm -f -- "$ZIP" "$MANIFEST"
 
-echo "=== 打包便携式 ZIP ==="
-powershell -NoProfile -Command \
-    "Compress-Archive -Path '$(cygpath -w "$BIN_DIR")\\*' -DestinationPath '$(cygpath -w "$ZIP")' -CompressionLevel Optimal -Force"
+echo "=== 打包并实际解包验收便携式 ZIP ==="
+(cd "$ROOT/backend" && go run ./cmd/update-release package \
+    -platform windows-amd64 -input "$BIN_DIR" -output "$ZIP")
+VERIFY_DIR="$(mktemp -d "${TMPDIR:-/tmp}/beeftv-release-verify.XXXXXX")"
+trap 'rm -rf -- "$VERIFY_DIR"' EXIT
+(cd "$ROOT/backend" && go run ./cmd/update-release verify-extract \
+    -platform windows-amd64 -zip "$ZIP" -dest "$VERIFY_DIR/payload")
+rm -rf -- "$VERIFY_DIR"
+trap - EXIT
 
 echo "=== 签名并生成更新清单 ==="
 COMMIT="$(git rev-parse HEAD)"

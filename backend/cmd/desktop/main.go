@@ -75,7 +75,8 @@ func desktopAppOptions(app *DesktopApp) *options.App {
 			Preferences: &mac.Preferences{FullscreenEnabled: mac.Enabled},
 		},
 		Windows: &windows.Options{
-			Theme: windows.Dark,
+			WebviewUserDataPath: filepath.Join(app.dataDir, "webview"),
+			Theme:               windows.Dark,
 			CustomTheme: &windows.ThemeSettings{
 				DarkModeTitleBar:          windows.RGB(13, 15, 18),
 				DarkModeTitleBarInactive:  windows.RGB(13, 15, 18),

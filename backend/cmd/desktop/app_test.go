@@ -194,6 +194,13 @@ func TestDesktopAppOptionsUseDarkNativeChrome(t *testing.T) {
 	if opts.Windows.CustomTheme.DarkModeTitleBar != windows.RGB(13, 15, 18) || opts.Windows.CustomTheme.DarkModeTitleBarInactive != windows.RGB(13, 15, 18) {
 		t.Fatalf("windows custom titlebar = %#v, want #0d0f12", opts.Windows.CustomTheme)
 	}
+	if want := filepath.Join(app.dataDir, "webview"); opts.Windows.WebviewUserDataPath != want {
+		t.Fatalf("WebView user data path = %q, want %q", opts.Windows.WebviewUserDataPath, want)
+	}
+	other := newDesktopApp(t.TempDir())
+	if opts.Windows.WebviewUserDataPath == desktopAppOptions(other).Windows.WebviewUserDataPath {
+		t.Fatal("separate workspaces must not share a WebView user data directory")
+	}
 }
 
 func TestSaveOwnedMediaCancelReturnsNoError(t *testing.T) {
