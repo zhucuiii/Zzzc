@@ -297,6 +297,8 @@
     --motion-ease-in-out: cubic-bezier(0.64, 0, 0.36, 1);
     --motion-ease-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1);
     --motion-ease-linear: linear;
+    /* 节点/面板几何联动：宽高与位置必须同一时长、同一缓动。 */
+    --canvas-geometry-motion: 340ms var(--motion-ease-out);
     /* delay */
     --motion-delay-none: 0ms;
     --motion-delay-xs: 30ms;
@@ -8812,9 +8814,9 @@ html:not(.dark) .creation-studio-control:hover,
    画布内的节点和下方输入面板才会同步。拖拽、画布手势、手动 resize 期间必须瞬时跟手。 */
 .node-element {
     transition:
-        width 340ms var(--motion-ease-out),
-        height 340ms var(--motion-ease-out),
-        transform 340ms var(--motion-ease-out);
+        width var(--canvas-geometry-motion),
+        height var(--canvas-geometry-motion),
+        transform var(--canvas-geometry-motion);
 }
 
 [data-canvas-node-dragging="true"] .node-element,
@@ -8830,8 +8832,8 @@ html:not(.dark) .creation-studio-control:hover,
 
 [data-canvas-node-panel][data-panel-animated="true"] {
     transition:
-        transform 340ms var(--motion-ease-out),
-        width 340ms var(--motion-ease-out);
+        transform var(--canvas-geometry-motion),
+        width var(--canvas-geometry-motion);
 }
 
 .canvas-node-shell {

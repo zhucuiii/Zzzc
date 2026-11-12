@@ -276,6 +276,7 @@ export const CanvasNode = React.memo(function CanvasNode({
         }
         window.removeEventListener("mousemove", handleResizeMove);
         window.removeEventListener("mouseup", handleResizeUp);
+        window.removeEventListener("blur", handleResizeUp);
     }, [handleResizeMove]);
 
     const handleResizeMouseDown = (event: React.MouseEvent, corner: ResizeCorner) => {
@@ -301,12 +302,14 @@ export const CanvasNode = React.memo(function CanvasNode({
         };
         window.addEventListener("mousemove", handleResizeMove);
         window.addEventListener("mouseup", handleResizeUp);
+        window.addEventListener("blur", handleResizeUp);
     };
 
     useEffect(() => {
         return () => {
             window.removeEventListener("mousemove", handleResizeMove);
             window.removeEventListener("mouseup", handleResizeUp);
+            window.removeEventListener("blur", handleResizeUp);
             resizeTokenRef.current += 1;
             resizeViewportRef.current?.removeAttribute("data-canvas-node-resizing");
             resizeViewportRef.current = null;
