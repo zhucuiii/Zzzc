@@ -28,7 +28,7 @@ done
 [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { usage; exit 2; }
 [[ -f "$KEY_FILE" ]] || { echo "缺少本机签名密钥: $KEY_FILE（不会被提交）" >&2; exit 1; }
 
-for tool in go bun powershell git; do
+for tool in go bun node powershell git cygpath; do
     command -v "$tool" >/dev/null || { echo "缺少构建工具: $tool" >&2; exit 1; }
 done
 if ((UPLOAD)); then

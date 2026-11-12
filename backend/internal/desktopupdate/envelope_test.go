@@ -9,6 +9,30 @@ import (
 	"testing"
 )
 
+func TestGitHubReleaseDownloadTrustIsScopedToZzzc(t *testing.T) {
+	artifact := PlatformArtifact{
+		URLs:   []string{"https://github.com/zhucuiii/Zzzc/releases/download/v2.2.2/BeefTV-v2.2.2-windows-amd64.zip"},
+		SHA256: strings.Repeat("ab", 32),
+		Size:   1,
+	}
+	if err := validateArtifactForSchema(artifact, payloadSchemaV2, "v2.2.2"); err != nil {
+		t.Fatalf("Zzzc GitHub Release should be accepted: %v", err)
+	}
+	artifact.URLs[0] = "https://github.com/other/repository/releases/download/v2.2.2/BeefTV-v2.2.2-windows-amd64.zip"
+	if err := validateArtifactForSchema(artifact, payloadSchemaV2, "v2.2.2"); err == nil {
+		t.Fatal("another repository must not be trusted")
+	}
+}
+
+func TestGitHubReleaseRedirectHosts(t *testing.T) {
+	if !isKnownDownloadHost("github.com") || !isKnownRedirectHost("release-assets.githubusercontent.com") {
+		t.Fatal("GitHub Release download chain must be accepted")
+	}
+	if isKnownRedirectHost("evil.example.com") {
+		t.Fatal("unrelated redirect hosts must remain blocked")
+	}
+}
+
 func TestVerifyEnvelopeRejectsInvalidSignatureAndTamper(t *testing.T) {
 	pubB64, priv, err := GenerateTestKey()
 	if err != nil {
@@ -297,11 +321,11 @@ func TestSourceOrderingByMainlandChinaLocaleAndTimezone(t *testing.T) {
 	input := []string{r2URL, cnbURL}
 
 	cases := []struct {
-		name           string
-		locale         string
-		timezone       string
-		wantFirst      string
-		wantSecond     string
+		name       string
+		locale     string
+		timezone   string
+		wantFirst  string
+		wantSecond string
 	}{
 		{"zh-CN locale with UTC timezone", "zh-CN", "UTC", cnbURL, r2URL},
 		{"zh_CN.UTF-8 locale with America/New_York", "zh_CN.UTF-8", "America/New_York", cnbURL, r2URL},

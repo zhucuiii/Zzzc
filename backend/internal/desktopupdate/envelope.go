@@ -265,6 +265,8 @@ func isKnownArtifactURL(parsed *url.URL) bool {
 		return strings.HasPrefix(parsed.Path, "/beeftv-downloads/desktop/-/releases/download/")
 	case "beeftv-components-1481187348.cos.ap-guangzhou.myqcloud.com":
 		return strings.HasPrefix(parsed.Path, "/beeftv/")
+	case "github.com":
+		return strings.HasPrefix(parsed.Path, "/zhucuiii/Zzzc/releases/download/")
 	default:
 		return false
 	}
@@ -272,7 +274,7 @@ func isKnownArtifactURL(parsed *url.URL) bool {
 
 func isKnownDownloadHost(host string) bool {
 	switch strings.ToLower(strings.TrimSpace(host)) {
-	case "updates.beefapi.com", "cnb.cool", "beeftv-components-1481187348.cos.ap-guangzhou.myqcloud.com":
+	case "updates.beefapi.com", "cnb.cool", "beeftv-components-1481187348.cos.ap-guangzhou.myqcloud.com", "github.com":
 		return true
 	default:
 		return false
@@ -280,7 +282,7 @@ func isKnownDownloadHost(host string) bool {
 }
 
 func isKnownRedirectHost(host string) bool {
-	return isKnownDownloadHost(host) || strings.EqualFold(strings.TrimSpace(host), "asset.cnb.cool")
+	return isKnownDownloadHost(host) || strings.EqualFold(strings.TrimSpace(host), "asset.cnb.cool") || strings.EqualFold(strings.TrimSpace(host), "release-assets.githubusercontent.com")
 }
 
 func platformArtifact(payload Payload, platform string) (PlatformArtifact, error) {

@@ -380,6 +380,10 @@ func validateSchema2URL(raw string) error {
 		if !strings.HasPrefix(parsed.Path, "/beeftv/") {
 			return fmt.Errorf("untrusted path on cos: %s", parsed.Path)
 		}
+	case "github.com":
+		if !strings.HasPrefix(parsed.Path, "/zhucuiii/Zzzc/releases/download/") {
+			return fmt.Errorf("untrusted path on github.com: %s", parsed.Path)
+		}
 	default:
 		return fmt.Errorf("untrusted download domain %s", parsed.Hostname())
 	}

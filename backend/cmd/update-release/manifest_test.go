@@ -14,6 +14,16 @@ import (
 
 const testCommit = "0123456789abcdef0123456789abcdef01234567"
 
+func TestGitHubReleaseURLValidation(t *testing.T) {
+	valid := "https://github.com/zhucuiii/Zzzc/releases/download/v2.2.2/BeefTV-v2.2.2-windows-amd64.zip"
+	if err := validateSchema2URL(valid); err != nil {
+		t.Fatalf("Zzzc release URL should be accepted: %v", err)
+	}
+	if err := validateSchema2URL(strings.Replace(valid, "/zhucuiii/Zzzc/", "/other/repository/", 1)); err == nil {
+		t.Fatal("another repository must not be trusted")
+	}
+}
+
 func TestSignVerifyRoundTripAndTamper(t *testing.T) {
 	dir := t.TempDir()
 	public, private, err := ed25519.GenerateKey(nil)
@@ -289,7 +299,7 @@ func TestSignSchema2AndFromEnvelopeWithDomesticMirror(t *testing.T) {
 		t.Fatal("expected untrusted domestic domain to fail")
 	}
 
-		// Reject --domestic-download-base on schema 1
+	// Reject --domestic-download-base on schema 1
 	if err := run([]string{
 		"sign",
 		"--schema", "1",
