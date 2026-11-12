@@ -1,0 +1,473 @@
+package protocol
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
+// Capability is the kind of model operation handled by a protocol adapter.
+type Capability string
+
+const (
+	CapabilityText  Capability = "text"
+	CapabilityImage Capability = "image"
+	CapabilityVideo Capability = "video"
+	CapabilityAudio Capability = "audio"
+)
+
+// Surface describes where an installed protocol may be selected.
+type Surface string
+
+const (
+	SurfaceAdminSystemChannel Surface = "admin.system-channel"
+	SurfaceUserCustomChannel  Surface = "user.custom-channel"
+	SurfaceCanvas             Surface = "canvas"
+	SurfaceCreation           Surface = "creation"
+	SurfaceAgent              Surface = "agent"
+)
+
+type Status string
+
+const (
+	StatusPending    Status = "pending"
+	StatusProcessing Status = "processing"
+	StatusSucceeded  Status = "succeeded"
+	StatusFailed     Status = "failed"
+	StatusCancelled  Status = "cancelled"
+)
+
+type MediaReference struct {
+	ID        string         `json:"id,omitempty"`
+	URL       string         `json:"url,omitempty"`
+	DataURL   string         `json:"dataUrl,omitempty"`
+	Kind      string         `json:"kind,omitempty"`
+	Role      string         `json:"role,omitempty"`
+	MIMEType  string         `json:"mimeType,omitempty"`
+	Name      string         `json:"name,omitempty"`
+	Order     int            `json:"order,omitempty"`
+	Weight    float64        `json:"weight,omitempty"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
+	Ephemeral bool           `json:"ephemeral,omitempty"`
+}
+
+// OutputOptions is the provider-neutral output contract. Legacy top-level
+// fields remain on GenerationRequest while callers migrate; manifests receive
+// both projections and should prefer request.output for new plugins.
+type OutputOptions struct {
+	Count         int            `json:"count,omitempty"`
+	Duration      int            `json:"duration,omitempty"`
+	AspectRatio   string         `json:"aspectRatio,omitempty"`
+	Width         int            `json:"width,omitempty"`
+	Height        int            `json:"height,omitempty"`
+	Resolution    string         `json:"resolution,omitempty"`
+	Quality       string         `json:"quality,omitempty"`
+	FPS           float64        `json:"fps,omitempty"`
+	GenerateAudio bool           `json:"generateAudio,omitempty"`
+	Watermark     bool           `json:"watermark,omitempty"`
+	Format        string         `json:"format,omitempty"`
+	Options       map[string]any `json:"options,omitempty"`
+}
+
+type Message struct {
+	Role    string `json:"role"`
+	Content any    `json:"content"`
+}
+
+// GenerationRequest is the platform contract shared by canvas, creation and agent.
+// Provider-specific fields belong in Extra and are never interpreted by the host.
+type GenerationRequest struct {
+	Capability      Capability                `json:"capability,omitempty"`
+	Model           string                    `json:"model"`
+	Prompt          string                    `json:"prompt,omitempty"`
+	Instructions    string                    `json:"instructions,omitempty"`
+	Messages        []Message                 `json:"messages,omitempty"`
+	Inputs          []MediaReference          `json:"inputs,omitempty"`
+	Images          []MediaReference          `json:"images,omitempty"`
+	Videos          []MediaReference          `json:"videos,omitempty"`
+	Audios          []MediaReference          `json:"audios,omitempty"`
+	Duration        int                       `json:"duration,omitempty"`
+	AspectRatio     string                    `json:"aspectRatio,omitempty"`
+	Resolution      string                    `json:"resolution,omitempty"`
+	Quality         string                    `json:"quality,omitempty"`
+	GenerateAudio   bool                      `json:"generateAudio,omitempty"`
+	Watermark       bool                      `json:"watermark,omitempty"`
+	ImageCount      int                       `json:"imageCount,omitempty"`
+	Operation       string                    `json:"operation,omitempty"`
+	Output          OutputOptions             `json:"output,omitempty"`
+	ProviderOptions map[string]map[string]any `json:"providerOptions,omitempty"`
+	Extra           map[string]any            `json:"extra,omitempty"`
+}
+
+type RequestContext struct {
+	BaseURL string
+	Request GenerationRequest
+}
+
+type PollContext struct {
+	BaseURL  string
+	Model    string
+	Request  GenerationRequest
+	TaskID   string
+	Metadata map[string]any
+}
+
+type RequestSpec struct {
+	DefaultPathPrefix string              `json:"defaultPathPrefix,omitempty"`
+	Method            string              `json:"method"`
+	Path              string              `json:"path"`
+	OriginPath        bool                `json:"originPath,omitempty"`
+	ContentType       string              `json:"contentType"`
+	Headers           map[string]string   `json:"headers,omitempty"`
+	Query             map[string][]string `json:"query,omitempty"`
+	Body              any                 `json:"body,omitempty"`
+	Files             []RequestFilePart   `json:"files,omitempty"`
+	Auth              ManifestAuth        `json:"auth,omitempty"`
+}
+
+type RequestFilePart struct {
+	Name      string         `json:"name"`
+	Filename  string         `json:"filename,omitempty"`
+	MIMEType  string         `json:"mimeType,omitempty"`
+	Reference MediaReference `json:"reference"`
+	Data      []byte         `json:"-"`
+}
+
+type CreateResult struct {
+	TaskID  string  `json:"taskId,omitempty"`
+	Status  Status  `json:"status"`
+	Result  *Result `json:"result,omitempty"`
+	Message string  `json:"message,omitempty"`
+}
+
+type PollResult struct {
+	TaskID  string  `json:"taskId,omitempty"`
+	Status  Status  `json:"status"`
+	Result  *Result `json:"result,omitempty"`
+	Message string  `json:"message,omitempty"`
+}
+
+type Result struct {
+	Images    []MediaReference `json:"images,omitempty"`
+	Videos    []MediaReference `json:"videos,omitempty"`
+	Audios    []MediaReference `json:"audios,omitempty"`
+	Text      string           `json:"text,omitempty"`
+	Reasoning string           `json:"reasoning,omitempty"`
+	Usage     map[string]any   `json:"usage,omitempty"`
+}
+
+type Parameter struct {
+	Name        string   `json:"name"`
+	Type        string   `json:"type"`
+	Required    bool     `json:"required,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Values      []string `json:"values,omitempty"`
+	Min         *int     `json:"min,omitempty"`
+	Max         *int     `json:"max,omitempty"`
+	Mapping     string   `json:"mapping,omitempty"`
+}
+
+type Metadata struct {
+	ID                      string            `json:"id"`
+	Version                 string            `json:"version"`
+	Name                    string            `json:"name"`
+	Vendor                  string            `json:"vendor"`
+	Description             string            `json:"description,omitempty"`
+	Categories              []Capability      `json:"categories"`
+	Scopes                  []Surface         `json:"scopes"`
+	Parameters              []Parameter       `json:"parameters,omitempty"`
+	Create                  string            `json:"-"`
+	Poll                    string            `json:"-"`
+	Cancel                  string            `json:"-"`
+	ContentType             string            `json:"-"`
+	Documentation           string            `json:"documentation,omitempty"`
+	LegacyAliases           []string          `json:"-"`
+	Enabled                 bool              `json:"enabled"`
+	Installable             bool              `json:"installable"`
+	Execution               string               `json:"-"`
+	BaseURL                 string               `json:"-"`
+	RequiresPublicMediaURLs bool                 `json:"-"`
+	MediaTransport          map[string]string    `json:"-"`
+	MediaUpload             *ManifestMediaUpload `json:"-"`
+	UnavailableReason       string               `json:"-"`
+}
+
+type ManifestMediaUpload struct {
+	URL          string   `json:"url,omitempty"`
+	Path         string   `json:"path,omitempty"`
+	Field        string   `json:"field,omitempty"`
+	MaxBytes     int64    `json:"maxBytes,omitempty"`
+	URLPaths     []string `json:"urlPaths,omitempty"`
+	ErrorPaths   []string `json:"errorPaths,omitempty"`
+	SuccessCodes []any    `json:"successCodes,omitempty"`
+	MessagePaths []string `json:"messagePaths,omitempty"`
+}
+
+// Manifest is the single plugin contract. A plugin may contribute providers,
+// workflows, canvas nodes and other capabilities from the same package; the
+// runtime chooses an execution engine per contribution without changing the
+// public manifest shape.
+type Manifest struct {
+	APIVersion    string                `json:"apiVersion"`
+	Metadata      Metadata              `json:"-"`
+	Client        string                `json:"client,omitempty"`
+	Surfaces      []string              `json:"surfaces,omitempty"`
+	Runtime       ManifestRuntime       `json:"runtime,omitempty"`
+	Permissions   []string              `json:"permissions,omitempty"`
+	Configuration ManifestConfiguration `json:"configuration,omitempty"`
+	Contributes   ManifestContributions `json:"contributes"`
+	// These fields are the normalized provider projection used by the runtime.
+	// They are never serialized; provider execution is described only under
+	// contributes.providers.
+	Create          ManifestOperation      `json:"-"`
+	Agent           *ManifestOperation     `json:"-"`
+	Poll            *ManifestOperation     `json:"-"`
+	Cancel          *ManifestOperation     `json:"-"`
+	ResultOperation *ManifestOperation     `json:"-"`
+	Response        ManifestResponse       `json:"-"`
+	AgentResponse   *ManifestAgentResponse `json:"-"`
+	Auth            ManifestAuth           `json:"-"`
+	Validations     []ManifestValidation   `json:"-"`
+	Variables       []ManifestVariable     `json:"-"`
+}
+
+// Manifest JSON is the public plugin contract. Metadata is an internal
+// execution projection and is deliberately not a second wire format.
+func (m Manifest) MarshalJSON() ([]byte, error) {
+	type wire struct {
+		APIVersion    string                `json:"apiVersion"`
+		ID            string                `json:"id"`
+		Name          string                `json:"name"`
+		Version       string                `json:"version"`
+		Author        string                `json:"author,omitempty"`
+		Description   string                `json:"description,omitempty"`
+		Documentation string                `json:"documentation,omitempty"`
+		Client        string                `json:"client,omitempty"`
+		Surfaces      []string              `json:"surfaces,omitempty"`
+		Enabled       bool                  `json:"enabled"`
+		Installable   bool                  `json:"installable,omitempty"`
+		Runtime       ManifestRuntime       `json:"runtime,omitempty"`
+		Permissions   []string              `json:"permissions,omitempty"`
+		Configuration ManifestConfiguration `json:"configuration,omitempty"`
+		Contributes   ManifestContributions `json:"contributes"`
+	}
+	return json.Marshal(wire{APIVersion: m.APIVersion, ID: m.Metadata.ID, Name: m.Metadata.Name, Version: m.Metadata.Version, Author: m.Metadata.Vendor, Description: m.Metadata.Description, Documentation: m.Metadata.Documentation, Client: m.Client, Surfaces: m.Surfaces, Enabled: m.Metadata.Enabled, Installable: m.Metadata.Installable, Runtime: m.Runtime, Permissions: m.Permissions, Configuration: m.Configuration, Contributes: m.Contributes})
+}
+
+func (m *Manifest) UnmarshalJSON(data []byte) error {
+	type wire struct {
+		APIVersion    string                `json:"apiVersion"`
+		ID            string                `json:"id"`
+		Name          string                `json:"name"`
+		DisplayName   string                `json:"displayName"`
+		Version       string                `json:"version"`
+		Author        string                `json:"author"`
+		Description   string                `json:"description"`
+		Documentation string                `json:"documentation"`
+		Client        string                `json:"client"`
+		Surfaces      []string              `json:"surfaces"`
+		Enabled       *bool                 `json:"enabled"`
+		Installable   bool                  `json:"installable"`
+		Runtime       ManifestRuntime       `json:"runtime"`
+		Permissions   []string              `json:"permissions"`
+		Configuration ManifestConfiguration `json:"configuration"`
+		Contributes   ManifestContributions `json:"contributes"`
+	}
+	var value wire
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	enabled := true
+	if value.Enabled != nil {
+		enabled = *value.Enabled
+	}
+	name := strings.TrimSpace(value.Name)
+	if name == "" {
+		name = strings.TrimSpace(value.DisplayName)
+	}
+	for index := range value.Contributes.CanvasNodes {
+		value.Contributes.CanvasNodes[index].Normalize()
+	}
+	m.APIVersion, m.Client, m.Surfaces, m.Runtime, m.Permissions, m.Configuration, m.Contributes = value.APIVersion, value.Client, value.Surfaces, value.Runtime, value.Permissions, value.Configuration, value.Contributes
+	m.Metadata = Metadata{ID: value.ID, Name: name, Version: value.Version, Vendor: value.Author, Description: value.Description, Documentation: value.Documentation, Enabled: enabled, Installable: value.Installable}
+	return nil
+}
+
+type ManifestRuntime struct {
+	Backend string `json:"backend,omitempty"`
+}
+
+type ManifestConfiguration struct {
+	Fields []ManifestField `json:"fields,omitempty"`
+}
+
+type ManifestField struct {
+	Name        string   `json:"name"`
+	Type        string   `json:"type"`
+	Label       string   `json:"label,omitempty"`
+	Required    bool     `json:"required,omitempty"`
+	Secret      bool     `json:"secret,omitempty"`
+	Default     any      `json:"default,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Values      []string `json:"values,omitempty"`
+}
+
+type ManifestContributions struct {
+	Providers   []ManifestProvider   `json:"providers,omitempty"`
+	Workflows   []ManifestWorkflow   `json:"workflows,omitempty"`
+	CanvasNodes []ManifestCanvasNode `json:"canvasNodes,omitempty"`
+	Skills      []string             `json:"skills,omitempty"`
+	Extensions  []string             `json:"extensions,omitempty"`
+}
+
+type ManifestProvider struct {
+	Variables               []ManifestVariable     `json:"variables,omitempty"`
+	ID                      string                 `json:"id"`
+	Label                   string                 `json:"label"`
+	LegacyAliases           []string               `json:"legacyAliases,omitempty"` // retired IDs saved config may still name; options under them still apply
+	Presets                 []ManifestPreset       `json:"presets,omitempty"`       // services that speak this interface; shown as one-click choices
+	Capabilities            []Capability           `json:"capabilities"`
+	Scopes                  []Surface              `json:"scopes"`
+	BaseURL                 string                 `json:"baseUrl,omitempty"`
+	RequiresPublicMediaURLs bool                   `json:"requiresPublicMediaUrls,omitempty"`
+	MediaTransport          map[string]string      `json:"mediaTransport,omitempty"`
+	MediaUpload             *ManifestMediaUpload   `json:"mediaUpload,omitempty"`
+	Auth                    ManifestAuth           `json:"auth,omitempty"`
+	Parameters              []Parameter            `json:"parameters,omitempty"`
+	Validations             []ManifestValidation   `json:"validations,omitempty"`
+	Create                  ManifestOperation      `json:"create"`
+	Agent                   *ManifestOperation     `json:"agent,omitempty"`
+	Poll                    *ManifestOperation     `json:"poll,omitempty"`
+	Cancel                  *ManifestOperation     `json:"cancel,omitempty"`
+	Result                  *ManifestOperation     `json:"result,omitempty"`
+	Response                ManifestResponse       `json:"response"`
+	AgentResponse           *ManifestAgentResponse `json:"agentResponse,omitempty"`
+	// Module 指向插件包内实现 submit/query 的 JS 文件；写了它就不写 create/poll。
+	Module string `json:"module,omitempty"`
+}
+
+// ManifestPreset is a named service that uses a provider unchanged: only the
+// display name and default address differ, so it is data, not another protocol.
+type ManifestPreset struct {
+	ID      string `json:"id"`
+	Label   string `json:"label"`
+	BaseURL string `json:"baseUrl"`
+}
+
+type ManifestAuth struct {
+	Type        string `json:"type"`
+	Field       string `json:"field"`
+	SecretField string `json:"secretField,omitempty"`
+	Header      string `json:"header,omitempty"`
+	Prefix      string `json:"prefix,omitempty"`
+	Query       string `json:"query,omitempty"`
+	Username    string `json:"username,omitempty"`
+	Service     string `json:"service,omitempty"`
+	Region      string `json:"region,omitempty"`
+}
+
+type ManifestValidation struct {
+	Assert  any    `json:"assert"`
+	Message string `json:"message"`
+}
+
+// Variables are ordered pure expressions shared by request validation and
+// construction. They are scoped to one provider call and never mutate input.
+type ManifestVariable struct {
+	Name  string `json:"name"`
+	Value any    `json:"value"`
+}
+
+type ManifestWorkflow struct {
+	ID         string         `json:"id"`
+	Label      string         `json:"label"`
+	ProviderID string         `json:"providerId"`
+	Capability Capability     `json:"capability"`
+	Parameters []Parameter    `json:"parameters"`
+	Defaults   map[string]any `json:"defaults,omitempty"`
+}
+
+type ManifestCanvasNode struct {
+	ID            string          `json:"id"`
+	Type          string          `json:"type,omitempty"`
+	Label         string          `json:"label"`
+	Title         string          `json:"title,omitempty"`
+	DefaultTitle  string          `json:"defaultTitle"`
+	DefaultSize   map[string]int  `json:"defaultSize,omitempty"`
+	DefaultWidth  int             `json:"defaultWidth,omitempty"`
+	DefaultHeight int             `json:"defaultHeight,omitempty"`
+	Fields        []ManifestField `json:"fields,omitempty"`
+	Schema        map[string]any  `json:"schema,omitempty"`
+	Renderer      string          `json:"renderer,omitempty"`
+	Description   string          `json:"description,omitempty"`
+	// AcceptsInputKind 是 "image"、"video"、"audio"、"text" 之一或它们的数组，原样交给画布。
+	AcceptsInputKind     any   `json:"acceptsInputKind,omitempty"`
+	MaxInputCount        int   `json:"maxInputCount,omitempty"`
+	ShowOutputConnection *bool `json:"showOutputConnection,omitempty"`
+}
+
+func (n *ManifestCanvasNode) Normalize() {
+	if n == nil {
+		return
+	}
+	if strings.TrimSpace(n.ID) == "" && strings.TrimSpace(n.Type) != "" {
+		n.ID = strings.TrimSpace(n.Type)
+	}
+	if strings.TrimSpace(n.Label) == "" {
+		n.Label = firstNonEmptyText(n.Title, n.DefaultTitle, n.ID)
+	}
+	if strings.TrimSpace(n.DefaultTitle) == "" {
+		n.DefaultTitle = firstNonEmptyText(n.Title, n.Label, n.ID)
+	}
+	if n.DefaultSize == nil && (n.DefaultWidth > 0 || n.DefaultHeight > 0) {
+		n.DefaultSize = map[string]int{}
+		if n.DefaultWidth > 0 {
+			n.DefaultSize["width"] = n.DefaultWidth
+		}
+		if n.DefaultHeight > 0 {
+			n.DefaultSize["height"] = n.DefaultHeight
+		}
+	}
+}
+
+func (n ManifestCanvasNode) NodeType() string {
+	return firstNonEmptyText(n.Type, n.ID)
+}
+
+func (n ManifestCanvasNode) NodeLabel() string {
+	return firstNonEmptyText(n.Label, n.Title, n.DefaultTitle, n.NodeType())
+}
+
+func (n ManifestCanvasNode) NodeDefaultTitle() string {
+	return firstNonEmptyText(n.DefaultTitle, n.Title, n.Label, n.NodeType())
+}
+
+func (n ManifestCanvasNode) NodeDimensions() (int, int) {
+	width, height := n.DefaultWidth, n.DefaultHeight
+	if width <= 0 && n.DefaultSize != nil {
+		width = n.DefaultSize["width"]
+	}
+	if height <= 0 && n.DefaultSize != nil {
+		height = n.DefaultSize["height"]
+	}
+	return width, height
+}
+
+func firstNonEmptyText(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func (r RequestSpec) Validate() error {
+	if r.Method == "" || r.Path == "" {
+		return fmt.Errorf("protocol request spec is incomplete")
+	}
+	if len(r.Files) > 0 && r.ContentType != "multipart/form-data" {
+		return fmt.Errorf("protocol file parts require multipart/form-data")
+	}
+	return nil
+}

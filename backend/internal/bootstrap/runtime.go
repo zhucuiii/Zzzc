@@ -1,0 +1,608 @@
+package bootstrap
+
+import (
+	"context"
+	"crypto/subtle"
+	"errors"
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"os"
+	goruntime "runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"infinite-canvas/backend/internal/app"
+	"infinite-canvas/backend/internal/assistantruntime"
+	"infinite-canvas/backend/internal/beeftv"
+	"infinite-canvas/backend/internal/buildinfo"
+	"infinite-canvas/backend/internal/conversation"
+	"infinite-canvas/backend/internal/database"
+	"infinite-canvas/backend/internal/depthcapture"
+	"infinite-canvas/backend/internal/eagle"
+	canvasHandler "infinite-canvas/backend/internal/handler"
+	"infinite-canvas/backend/internal/localapp"
+	"infinite-canvas/backend/internal/modelcatalog"
+	"infinite-canvas/backend/internal/pluginhost"
+	"infinite-canvas/backend/internal/plugins"
+	"infinite-canvas/backend/internal/repository"
+	"infinite-canvas/backend/internal/runtimeinfo"
+	httptransport "infinite-canvas/backend/internal/transport/http"
+	"infinite-canvas/backend/internal/workspace"
+
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+	"infinite-canvas/backend/internal/agentconnect"
+	"infinite-canvas/backend/internal/agentops"
+)
+
+type Runtime struct {
+	workspaceLock    *os.File
+	cfg              Config
+	db               *gorm.DB
+	service          *app.Service
+	localApp         *localapp.App
+	handler          http.Handler
+	status           *systemStatus
+	launchToken      string
+	uiBootstrapToken string
+	beefTV           *beeftv.Service
+	assistantHost    *assistantruntime.Host
+	listener         net.Listener
+	httpServer       *http.Server
+	serveErr         chan error
+	started          atomic.Bool
+	closed           atomic.Bool
+	closeOnce        sync.Once
+	backgroundDone   chan struct{}
+	closeErr         error
+}
+
+func Open(_ context.Context, raw Config) (result *Runtime, openErr error) {
+	cfg := raw.withDefaults()
+	if cfg.Profile != ProfileServer && cfg.Profile != ProfileDesktop {
+		return nil, fmt.Errorf("不支持的运行模式：%s", cfg.Profile)
+	}
+	if strings.TrimSpace(cfg.DataDir) == "" {
+		return nil, errors.New("后端数据目录不能为空")
+	}
+	if cfg.Profile == ProfileDesktop && !strings.HasPrefix(cfg.ListenAddr, "127.0.0.1:") {
+		return nil, errors.New("桌面运行时只能监听 127.0.0.1")
+	}
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		return nil, err
+	}
+	var workspaceLock *os.File
+	if cfg.Profile == ProfileDesktop {
+		var err error
+		workspaceLock, err = runtimeinfo.LockWorkspace(cfg.DataDir)
+		if err != nil {
+			return nil, err
+		}
+		defer func() {
+			if openErr != nil {
+				_ = workspaceLock.Close()
+			}
+		}()
+	}
+	db, err := database.Open(database.Config{Driver: cfg.DatabaseDriver, DSN: cfg.DatabaseURL, DataDir: cfg.DataDir})
+	if err != nil {
+		return nil, err
+	}
+	cleanupDB := func() {
+		if sqlDB, sqlErr := db.DB(); sqlErr == nil {
+			_ = sqlDB.Close()
+		}
+	}
+	if err := database.ConfigurePool(db); err != nil {
+		cleanupDB()
+		return nil, err
+	}
+	if cfg.AutoMigrate {
+		err = database.MigrateLocalSchema(db)
+	} else {
+		err = database.RequireLocalSchema(db)
+	}
+	if err != nil {
+		cleanupDB()
+		return nil, err
+	}
+
+	repo := repository.New(db)
+	if cfg.Profile == ProfileDesktop {
+		if err := repo.PauseDepthCapturesAfterRestart(context.Background()); err != nil {
+			cleanupDB()
+			return nil, err
+		}
+	}
+	svc := app.NewLocal(repo, cfg.DataDir)
+	cleanupService := func() {
+		_ = svc.Close()
+		cleanupDB()
+	}
+	if err := initializeService(svc); err != nil {
+		cleanupService()
+		return nil, err
+	}
+	wirePluginPackages(svc)
+	providerConfig, configErr := workspace.NewProviderConfig(cfg.DataDir)
+	if configErr != nil {
+		cleanupService()
+		return nil, configErr
+	}
+	beefTVConnection, beefTVErr := beeftv.New(beeftv.Options{
+		DataDir: cfg.DataDir, Provider: providerConfig, ClientVersion: buildinfo.Current().Version,
+		FetchCatalog: func(apiKey, baseURL string) ([]beeftv.CatalogModel, error) {
+			owner, ownerErr := svc.LocalWorkspaceOwner()
+			if ownerErr != nil {
+				return nil, ownerErr
+			}
+			items, catalogErr := svc.FetchChannelModelCatalog(context.Background(), owner, app.ChannelModelsRequest{
+				BaseURL: baseURL, APIKey: apiKey, APIFormat: "openai", ChannelID: beeftv.ChannelID, CredentialRef: beeftv.CredentialRef,
+			})
+			if catalogErr != nil {
+				return nil, catalogErr
+			}
+			models := make([]beeftv.CatalogModel, 0, len(items))
+			for _, item := range items {
+				imageVersion := ""
+				if item.ImageCapabilitiesVersion != nil {
+					imageVersion = *item.ImageCapabilitiesVersion
+				}
+				version := ""
+				if item.VideoCapabilitiesVersion != nil {
+					version = *item.VideoCapabilitiesVersion
+				}
+				models = append(models, beeftv.CatalogModel{
+					ID: item.ID, DisplayName: item.DisplayName, ModelType: item.ModelType, SupportedEndpointTypes: item.SupportedEndpointTypes,
+					ImageCapabilities: item.ImageCapabilities, ImageCapabilitiesVersion: imageVersion,
+					VideoCapabilities: item.VideoCapabilities, VideoCapabilitiesVersion: version,
+					VideoPricing: item.VideoPricing,
+				})
+			}
+			return models, nil
+		},
+	})
+	if beefTVErr != nil {
+		cleanupService()
+		return nil, beefTVErr
+	}
+	svc.SetBeefTV(beefTVConnection)
+	localKernel := app.NewLocalKernel(svc)
+	assetService := svc.ResourceService()
+	projectService := svc.ProjectService()
+	taskService := svc.TaskService()
+	localRoot, err := localapp.New(localapp.Options{
+		Workspace: workspace.NewService(repo), Projects: projectService, Assets: assetService, Tasks: taskService,
+		Generation: taskService, ProviderConfig: providerConfig, ModelCapability: modelcatalog.NewCapabilityNormalizer(svc.PluginDomain().LookupWorkflow), Lifecycle: localKernel,
+	})
+	if err != nil {
+		cleanupService()
+		return nil, err
+	}
+
+	owner, ownerErr := svc.LocalWorkspaceOwner()
+	if ownerErr != nil {
+		cleanupService()
+		return nil, ownerErr
+	}
+	scope := workspace.Context{ID: owner.ID, DataDir: cfg.DataDir}
+
+	// 桌面启动令牌在构建路由前解析：它既是整个 API 的入口凭据，也是「本机受信任 UI」
+	// 的判据（内置助手签发 UI 会话时使用）。服务端形态没有它，DesktopTrust 为 nil。
+	launchToken := ""
+	uiBootstrapToken := ""
+	if cfg.Profile == ProfileDesktop {
+		uiBootstrapToken, err = httptransport.NewLaunchToken()
+		if err != nil {
+			cleanupService()
+			return nil, err
+		}
+		launchToken = strings.TrimSpace(cfg.LaunchToken)
+		if launchToken == "" {
+			launchToken, err = httptransport.NewLaunchToken()
+			if err != nil {
+				cleanupService()
+				return nil, err
+			}
+		}
+	}
+
+	router := gin.New()
+	router.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
+		return fmt.Sprintf("%s - [%s] \"%s %s\" %d %s %s\n", param.ClientIP, param.TimeStamp.Format(time.RFC3339), param.Method, param.Path, param.StatusCode, param.Latency, param.ErrorMessage)
+	}), gin.Recovery())
+	router.Use(canvasHandler.RequestCorrelationMiddleware())
+	for _, middleware := range cfg.RouterMiddleware {
+		router.Use(middleware)
+	}
+	if cfg.Profile == ProfileDesktop {
+		router.Use(desktopCORSMiddleware())
+	}
+	router.Use(canvasHandler.WorkspaceMiddleware(scope))
+	// 本机可信凭据在组合根生成：owner 凭据与宿主凭据只在本机数据目录，0600。
+	agentops.EnsureAgentCredentials(svc.DataDir())
+	// 上次断开没有确认吊销的凭据在启动时再试一次；失败就保留记录，界面
+	// 继续显示需要重试，绝不把仍有有效凭据的状态说成已断开。
+	if cfg.Profile == ProfileDesktop {
+		_ = agentconnect.RetryStaleOneClickCredentials(agentops.NewClientRegistry(svc.DataDir()), svc.DataDir())
+	}
+	assistantHost := assistantruntime.New(assistantruntime.OptionsFromService(svc))
+	svc.SetAssistantContinuationSubmitter(canvasHandler.AssistantContinuationSubmitter(svc, assistantHost))
+	api := router.Group("/api")
+	status := newSystemStatus(db, svc, true)
+	registerSystemStatusRoutes(api, status)
+	canvasHandler.RegisterDesktopCanvasAPIWithDependencies(api, svc, canvasHandler.RuntimeDependencies{
+		RequestCoordinator: localKernel,
+		ProviderConfig:     localRoot.ProviderConfig,
+		ModelCapability:    localRoot.ModelCapability,
+		Assets:             localRoot.Assets,
+		Projects:           localRoot.Projects,
+		Tasks:              localRoot.Tasks,
+		Generation:         localRoot.Generation,
+		BeefTV:             beefTVConnection,
+		AssistantHost:      assistantHost,
+		Conversations:      conversation.New(conversation.NewStore(repo)),
+		TextReplay:         svc.TextReplay(),
+		Appearance:         svc.AppearanceDomain(),
+		Diagnostics:        svc.DiagnosticsDomain(),
+		Eagle:              eagle.New(),
+		DesktopTrust:       desktopTrust(launchToken, uiBootstrapToken),
+	})
+	businessCatalog := canvasHandler.NewBusinessCatalog(router.Routes())
+	canvasHandler.RegisterBusinessDiscovery(api, businessCatalog, svc)
+	router.NoRoute(func(c *gin.Context) {
+		c.JSON(http.StatusNotFound, gin.H{"code": http.StatusNotFound, "msg": "请求不存在"})
+	})
+
+	rootHandler := http.Handler(router)
+	protected := rootHandler
+	if launchToken != "" {
+		protected = httptransport.RequireLaunchToken(launchToken)(rootHandler)
+	}
+	clients := agentops.NewClientRegistry(svc.DataDir())
+	rootHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if tool, allowed := businessCatalog.Match(r.Method, r.URL.Path); allowed && isLoopbackRemote(r.RemoteAddr) {
+			if reg, valid := clients.Lookup(r.Header.Get("X-Beeftv-Client"), strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))); valid {
+				if reg.Mode == agentops.ClientReadOnly && !tool.ReadOnly {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusForbidden)
+					_, _ = w.Write([]byte(`{"code":403,"reason":"read_only_client","msg":"此连接仅支持读取"}`))
+					return
+				}
+				if r.Header.Get("X-Beeftv-Agent-Turn") != "" || r.Header.Get("X-Beeftv-Agent-Token") != "" || !canvasHandler.IsLocalBusinessRequest(r) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusForbidden)
+					_, _ = w.Write([]byte(`{"code":403,"reason":"invalid_external_identity","msg":"外部调用不能使用助手身份"}`))
+					return
+				}
+				router.ServeHTTP(w, canvasHandler.WithExternalBusinessPrincipal(r, reg.Mode == agentops.ClientReadOnly))
+				return
+			}
+			if r.Header.Get("X-Beeftv-Client") == "" && agentops.OwnerTokenMatches(svc.DataDir(), strings.TrimSpace(r.Header.Get("X-Beeftv-Owner"))) && canvasHandler.IsLocalBusinessRequest(r) {
+				if launchToken != "" && r.Header.Get("X-Desktop-Token") != launchToken {
+					protected.ServeHTTP(w, r)
+					return
+				}
+				router.ServeHTTP(w, canvasHandler.WithExternalBusinessPrincipal(r, false))
+				return
+			}
+		}
+		// External clients receive only their own capability token, never shell credentials.
+		// Shared operations also accept registered local clients. Business handlers
+		// above use the same mounted catalog for discovery and authorization.
+		// Credential issuance and runtime administration retain desktop trust.
+		if isOpsEntryPath(r) && isLoopbackRemote(r.RemoteAddr) {
+			if _, ok := clients.Lookup(r.Header.Get("X-Beeftv-Client"), strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))); ok {
+				router.ServeHTTP(w, r)
+				return
+			}
+			if r.Header.Get("X-Beeftv-Client") == "" && agentops.OwnerTokenMatches(svc.DataDir(), strings.TrimSpace(r.Header.Get("X-Beeftv-Owner"))) && canvasHandler.IsLocalBusinessRequest(r) {
+				router.ServeHTTP(w, r)
+				return
+			}
+		}
+		if r.Header.Get("X-Beeftv-Client") != "" {
+			if launchToken != "" && r.Header.Get("X-Desktop-Token") != launchToken {
+				protected.ServeHTTP(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"code":403,"reason":"external_business_forbidden","msg":"该接口不支持外部调用"}`))
+			return
+		}
+		protected.ServeHTTP(w, r)
+	})
+	return &Runtime{
+		workspaceLock:    workspaceLock,
+		cfg:              cfg,
+		db:               db,
+		service:          svc,
+		localApp:         localRoot,
+		handler:          rootHandler,
+		status:           status,
+		launchToken:      launchToken,
+		uiBootstrapToken: uiBootstrapToken,
+		beefTV:           beefTVConnection,
+		assistantHost:    assistantHost,
+		serveErr:         make(chan error, 1),
+	}, nil
+}
+
+// wirePluginPackages connects installed plugin packages to the skill catalog
+// and installs them with the npm shipped in the desktop runtime.
+func wirePluginPackages(svc *app.Service) {
+	executable, _ := os.Executable()
+	domain := svc.PluginDomain()
+	domain.SetPackageFetcher(plugins.NpmPackageFetcher(assistantruntime.BundledNpmCommand(executable, goruntime.GOOS)))
+	domain.SetSkillSyncHook(svc.SkillsDomain().ApplyPluginSkills)
+}
+
+func initializeService(svc *app.Service) error {
+	if err := svc.ValidateRuntime(); err != nil {
+		return err
+	}
+	initializers := []func() error{
+		svc.EnsureDefaultPromptTemplates,
+		svc.EnsureBuiltinProjectWorkflowTemplate,
+		svc.EnsureBuiltinSkills,
+		svc.SkillsDomain().RetireExternalSkills,
+		svc.EnsureSkillPackages,
+	}
+	for _, initialize := range initializers {
+		if err := initialize(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Runtime) Handler() http.Handler { return r.handler }
+
+func (r *Runtime) Start() error {
+	if r == nil || r.closed.Load() {
+		return errors.New("运行时已关闭")
+	}
+	if !r.started.CompareAndSwap(false, true) {
+		return nil
+	}
+	listener, err := net.Listen("tcp", r.cfg.ListenAddr)
+	if err != nil {
+		r.started.Store(false)
+		return err
+	}
+	r.listener = listener
+	httpContext, cancelHTTP := context.WithCancel(context.Background())
+	r.httpServer = &http.Server{Handler: r.handler, ReadHeaderTimeout: 10 * time.Second,
+		BaseContext: func(net.Listener) context.Context { return httpContext }}
+	// Shutdown waits for streams but does not cancel them. Its callback runs
+	// after Durable releases its invocations while the ops listener is alive.
+	r.httpServer.RegisterOnShutdown(cancelHTTP)
+	if r.localApp != nil {
+		r.localApp.Start()
+	} else {
+		r.service.StartWorker()
+	}
+	r.backgroundDone = make(chan struct{})
+	go func() {
+		defer close(r.backgroundDone)
+		r.service.RecoverPlaybackTranscodes()
+	}()
+	// 精选插件跟着精选列表自动更新；HTTP 服务关闭时一起停下。
+	go r.service.PluginDomain().RunOfficialUpdates(httpContext)
+	// The assistant loads its operation catalog from this server before becoming
+	// healthy. Accept requests before synchronously waiting for child readiness.
+	go func() {
+		err := r.httpServer.Serve(listener)
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			r.serveErr <- fmt.Errorf("HTTP 服务异常退出：%w", err)
+		}
+		close(r.serveErr)
+	}()
+	// 桌面形态：按本机配置拉起内置创作助手宿主（未配置时 no-op），
+	// 关闭时由 Runtime.Close 收尾，保证「应用启动链」而不是手工点按钮。
+	if r.cfg.Profile == ProfileDesktop {
+		opsURL := "http://" + r.listener.Addr().String() + "/api"
+		// 运行时发现：端口是动态的，外部客户端靠工作区对应的运行时描述文件找到当前地址，
+		// 而不是靠猜端口或拿到桌面启动令牌。写失败不影响应用启动。
+		if err := runtimeinfo.Write(r.cfg.DataDir, opsURL, buildinfo.Current().Version); err != nil {
+			log.Printf("未能写入运行时地址（外部 Agent 需手动指定 BEEFTV_BASE_URL）：%v", err)
+		}
+		if r.assistantHost != nil {
+			if err := r.assistantHost.Start(opsURL, r.launchToken); err != nil {
+				log.Printf("内置创作助手宿主未启动（不影响应用启动）：%v", err)
+			}
+		}
+	}
+	if r.beefTV != nil {
+		_ = r.beefTV.Recover(context.Background())
+	}
+	r.status.markStarted()
+	return nil
+}
+
+func (r *Runtime) Ready() bool {
+	return r != nil && r.started.Load() && !r.closed.Load() && r.status.snapshot(context.Background()).Ready
+}
+
+func (r *Runtime) BaseURL() string {
+	if r == nil || r.listener == nil {
+		return ""
+	}
+	return "http://" + r.listener.Addr().String() + "/api"
+}
+
+func (r *Runtime) LaunchToken() string {
+	if r == nil {
+		return ""
+	}
+	return r.launchToken
+}
+
+func (r *Runtime) UIBootstrapToken() string { return r.uiBootstrapToken }
+
+func (r *Runtime) Errors() <-chan error {
+	if r == nil {
+		closed := make(chan error)
+		close(closed)
+		return closed
+	}
+	return r.serveErr
+}
+
+func (r *Runtime) DepthComponents() *depthcapture.Service { return r.service.DepthComponents() }
+
+func (r *Runtime) PrepareStorageMigration(ctx context.Context) (func(), error) {
+	return r.service.PrepareStorageMigration(ctx)
+}
+
+func (r *Runtime) Close(ctx context.Context) error {
+	if r == nil {
+		return nil
+	}
+	r.closeOnce.Do(func() {
+		r.closed.Store(true)
+		r.status.beginDrain()
+		var failures []error
+		// Durable must release its invocations while Go authorization and ops
+		// are still reachable; closing HTTP first turns Quit into fetch errors.
+		if r.assistantHost != nil {
+			if err := r.assistantHost.StopContext(ctx); err != nil {
+				failures = append(failures, err)
+			}
+		}
+		if r.beefTV != nil {
+			r.beefTV.Close()
+		}
+		if err := r.DepthComponents().CloseComponents(ctx); err != nil {
+			failures = append(failures, fmt.Errorf("暂停组件下载：%w", err))
+		}
+		// 干净退出先撤掉运行时地址：留着会让下一次发现连到一个已经不在的端口。
+		if r.cfg.Profile == ProfileDesktop {
+			if err := runtimeinfo.Remove(r.cfg.DataDir); err != nil {
+				failures = append(failures, fmt.Errorf("清理运行时地址：%w", err))
+			}
+		}
+		if r.httpServer != nil {
+			httpCtx, cancel := context.WithTimeout(ctx, min(30*time.Second, r.cfg.ShutdownTimeout))
+			if err := r.httpServer.Shutdown(httpCtx); err != nil {
+				_ = r.httpServer.Close()
+				failures = append(failures, fmt.Errorf("关闭 HTTP 服务：%w", err))
+			}
+			cancel()
+		}
+		workerCtx, cancel := context.WithTimeout(ctx, r.cfg.ShutdownTimeout)
+		var workerErr error
+		if r.localApp != nil {
+			workerErr = r.localApp.Stop(workerCtx)
+		} else {
+			workerErr = r.service.StopWorker(workerCtx)
+		}
+		if workerErr != nil {
+			failures = append(failures, fmt.Errorf("等待后台任务退出：%w", workerErr))
+		}
+		cancel()
+		if r.backgroundDone != nil {
+			select {
+			case <-r.backgroundDone:
+			default:
+				select {
+				case <-r.backgroundDone:
+				case <-ctx.Done():
+					failures = append(failures, fmt.Errorf("等待初始化任务退出：%w", ctx.Err()))
+				}
+			}
+		}
+		// 生成任务和 HTTP 请求都停了才关插件宿主：早关会杀掉还在提交的调用，后来的调用又会拉起新进程。
+		pluginhost.Close()
+		var serviceErr error
+		if r.localApp != nil {
+			serviceErr = r.localApp.Close()
+		} else {
+			serviceErr = r.service.Close()
+		}
+		if serviceErr != nil {
+			failures = append(failures, serviceErr)
+		}
+		if sqlDB, err := r.db.DB(); err == nil {
+			if err := sqlDB.Close(); err != nil {
+				failures = append(failures, err)
+			}
+		}
+		r.closeErr = errors.Join(failures...)
+		if r.workspaceLock != nil {
+			_ = r.workspaceLock.Close()
+		}
+	})
+	return r.closeErr
+}
+
+func desktopCORSMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		origin := strings.TrimSpace(c.GetHeader("Origin"))
+		if origin != "" {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Access-Control-Allow-Credentials", "true")
+			c.Header("Vary", "Origin, Access-Control-Request-Method, Access-Control-Request-Headers")
+		}
+		c.Header("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, Traceparent, X-Desktop-Token, X-Beeftv-UI-Bootstrap, X-Beeftv-Ui-Session, X-Canvas-Trace-ID, X-Idempotency-Key, X-Canvas-Scene, X-Canvas-Upstream-URL, X-Canvas-Upstream-Format, X-Canvas-Upstream-Base-URL, X-Canvas-Upstream-Headers")
+		c.Header("Access-Control-Expose-Headers", "X-Request-ID, X-Canvas-Trace-ID, X-Diagnostic-Bundle-ID, X-Diagnostic-Schema-Version, X-Canvas-Failure-Category")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
+	}
+}
+
+// isOpsEntryPath 只认操作层入口：GET /api/ops、GET /api/ops/orders、GET /api/ops/external-writes、
+// POST /api/ops/<op>、POST /api/ops/orders/<proposalId>/approve 与 POST /api/ops/external-writes/<opId>/undo。
+// /api/ops/clients 是凭据签发，不在豁免范围。
+func isOpsEntryPath(r *http.Request) bool {
+	path := r.URL.Path
+	if r.Method == http.MethodGet && (path == "/api/ops" || path == "/api/ops/orders" || path == "/api/ops/external-writes") {
+		return true
+	}
+	if r.Method != http.MethodPost || !strings.HasPrefix(path, "/api/ops/") {
+		return false
+	}
+	op := strings.TrimPrefix(path, "/api/ops/")
+	if strings.HasPrefix(op, "orders/") && strings.HasSuffix(op, "/approve") {
+		proposalID := strings.TrimSuffix(strings.TrimPrefix(op, "orders/"), "/approve")
+		return proposalID != "" && !strings.Contains(proposalID, "/")
+	}
+	if strings.HasPrefix(op, "external-writes/") && strings.HasSuffix(op, "/undo") {
+		opID := strings.TrimSuffix(strings.TrimPrefix(op, "external-writes/"), "/undo")
+		return opID != "" && !strings.Contains(opID, "/")
+	}
+	return op != "" && op != "clients" && !strings.Contains(op, "/")
+}
+
+// isLoopbackRemote 保证豁免只对本机连接生效。
+func isLoopbackRemote(remoteAddr string) bool {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	parsed := net.ParseIP(strings.Trim(host, "[]"))
+	return parsed != nil && parsed.IsLoopback()
+}
+
+// desktopTrust 用桌面启动令牌判定请求是否来自受信任的桌面壳。
+// 令牌为空（服务端形态）时返回 nil，表示没有这条信任路径。
+func desktopTrust(launchToken, uiToken string) func(*http.Request) bool {
+	want := []byte(strings.TrimSpace(launchToken))
+	if len(want) == 0 {
+		return nil
+	}
+	return func(r *http.Request) bool {
+		got := []byte(r.Header.Get(httptransport.LaunchTokenHeader))
+		ui := []byte(r.Header.Get("X-Beeftv-UI-Bootstrap"))
+		return len(got) == len(want) && subtle.ConstantTimeCompare(got, want) == 1 && len(uiToken) > 0 && subtle.ConstantTimeCompare(ui, []byte(uiToken)) == 1
+	}
+}

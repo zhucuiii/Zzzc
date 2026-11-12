@@ -1,0 +1,615 @@
+import { Alert, App, Button, Form, Input, Popconfirm, Segmented, Select } from "antd";
+import { Bug, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+
+import { ModelEditorModal } from "@/components/model-editor-modal";
+import { ChannelHeadersEditor, validateChannelHeaders } from "@/components/channel-headers-editor";
+import { WorkspaceState } from "@/components/layout/workspace-state";
+import { PageHeader } from "@/components/layout/workspace-page";
+import { applyFetchedChannelModelCatalog } from "@/lib/channel-model-catalog";
+import { ensureModelProfilesWithUiDefaults } from "@/lib/model-protocols";
+import { fetchChannelModels } from "@/services/api/image";
+import { channelHasGenerationCredential, channelHasManagedBeefTVCredential, createModelChannel, defaultBaseUrlForApiFormat, isBuiltinBeefTVChannel, normalizeConfigSnapshot, useConfigStore, type ModelChannel } from "@/stores/use-config-store";
+import { ChannelModelSettings } from "./channel-model-settings";
+import { ModelServiceEditor } from "./model-service-editor";
+import { ChannelRequestAddressLines } from "./channel-request-addresses";
+import { currentModelConnectionReceipt, useModelConnectionTests } from "@/stores/use-model-connection-tests";
+import { ModelLogo } from "@/components/model-logo";
+import beefTVAppIcon from "../../../../assets/app-icon.png";
+import { MODEL_SERVICE_PRESETS, isTopazUpscaleChannel, channelAllowsEmptyAPIKey, mergeSavedServiceChannel, pluginServices, servicePresetFor } from "@/lib/model-service-presets";
+import { workspaceCapabilities } from "@/services/workspace-mode";
+import { localWorkspaceConfig } from "@/lib/user-session";
+import { getLocalModelConfig } from "@/services/api/workspace";
+import { commitModelConfig, flushModelConfig, getModelConfigPersistenceState, subscribeModelConfigPersistence, type ModelConfigPersistenceState } from "@/services/model-config-repository";
+import { createChannelCatalogRequests } from "@/services/channel-catalog-requests";
+import { getTransportFailureKind } from "@/services/api/request";
+import { fetchPluginProviderCatalog } from "@/services/api/plugin-catalog";
+import { zzzcConnectionLabel, type ZzzcConnectionSummary } from "@/services/api/zzzc-connection";
+import { useZzzcConnection } from "@/components/layout/zzzc-connection-provider";
+import { BeefTVConnectionActions } from "@/components/zzzc-connection-actions";
+export { BeefTVConnectionActions } from "@/components/zzzc-connection-actions";
+import { mergeManagedBeefTVCatalog, withChannels } from "@/lib/managed-beeftv-catalog";
+export { mergeManagedBeefTVCatalog, shouldRefreshBeefTVCatalog, withChannels } from "@/lib/managed-beeftv-catalog";
+import { recordChannelDelete, recordChannelDeleteConfirmOpen } from "./model-settings-diagnostics";
+
+type UserChannelConnection = "openai" | "gemini";
+type ChannelSettingsPaneProps = {
+    onOpenDiagnostics?: () => void;
+    onOpenModels?: () => void;
+};
+
+export function ChannelSettingsPane({ onOpenDiagnostics, onOpenModels }: ChannelSettingsPaneProps) {
+    const { message } = App.useApp();
+    const config = useConfigStore((state) => state.config);
+    const replaceConfig = useConfigStore((state) => state.replaceConfig);
+    const localMode = workspaceCapabilities().local;
+    const persistence = useSyncExternalStore(subscribeModelConfigPersistence, getModelConfigPersistenceState, getModelConfigPersistenceState);
+    const [loadingChannelIds, setLoadingChannelIds] = useState<string[]>([]);
+    const [editingChannelId, setEditingChannelId] = useState<string | null>(null);
+    const [newChannelId, setNewChannelId] = useState<string | null>(null);
+    const [serviceEditor, setServiceEditor] = useState<ModelChannel | null | undefined>(undefined);
+    const [pluginServiceIds, setPluginServiceIds] = useState<ReadonlySet<string>>(() => new Set());
+    const { connection: beefConnection, busy: beefBusy, catalogSyncFailed, connect, cancel, disconnect, retryCatalog, openAccount } = useZzzcConnection();
+    const requests = useRef(createChannelCatalogRequests());
+    const deleting = useRef(new Set<string>());
+    const [deleteFailures, setDeleteFailures] = useState<Record<string, string>>({});
+    useEffect(() => () => requests.current.cancelAll(), []);
+    const cancelCatalog = (id: string) => {
+        requests.current.cancel(id);
+        setLoadingChannelIds((items) => items.filter((item) => item !== id));
+    };
+
+    const userChannels = config.channels.filter((channel) => channel.scope !== "system");
+    useEffect(() => {
+        let cancelled = false;
+        void fetchPluginProviderCatalog("user.custom-channel")
+            .then((items) => { if (!cancelled) setPluginServiceIds(new Set(pluginServices(items).map((item) => item.value))); })
+            .catch(() => undefined);
+        return () => { cancelled = true; };
+    }, []);
+
+    const updateChannels = (channels: ModelChannel[], baseConfig = config) => {
+        replaceConfig(withChannels(baseConfig, channels));
+    };
+
+    const updateChannel = (id: string, patch: Partial<ModelChannel>) => {
+        cancelCatalog(id);
+        updateChannels(
+            config.channels.map((channel) => {
+                if (channel.id !== id) return channel;
+                const models = patch.models ? uniqueModels(patch.models) : channel.models;
+                const modelProfiles = patch.modelProfiles !== undefined
+                    ? patch.modelProfiles
+                    : patch.models && channel.scope !== "system"
+                        ? ensureModelProfilesWithUiDefaults(models, channel.modelProfiles, [], channel.apiFormat)
+                        : patch.models
+                            ? channel.modelProfiles?.filter((item) => models.includes(item.model))
+                            : channel.modelProfiles;
+                return {
+                    ...channel,
+                    ...patch,
+                    models,
+                    modelProfiles,
+                };
+            }),
+        );
+    };
+
+    const updateChannelConnection = (channel: ModelChannel, connection: UserChannelConnection) => {
+        const apiFormat = connection;
+        const defaultBaseUrl = defaultBaseUrlForApiFormat(apiFormat);
+        const baseUrl = isKnownDefaultBaseUrl(channel.baseUrl) ? defaultBaseUrl : channel.baseUrl;
+        // 渠道只负责连接类型；具体模型能力和请求协议由下方共享能力卡片维护。
+        updateChannel(channel.id, { apiFormat, interfaceType: undefined, baseUrl });
+    };
+
+    const addChannel = () => {
+        setServiceEditor(null);
+    };
+
+    const saveService = async (channel: ModelChannel) => {
+        cancelCatalog(channel.id);
+        const latest = useConfigStore.getState().config;
+        const { channels, baseConfig } = mergeSavedServiceChannel(latest, channel);
+        updateChannels(channels, baseConfig);
+        await flushModelConfig();
+        const saved = getModelConfigPersistenceState();
+        if (saved.status === "error" || saved.dirty) throw new Error(saved.error || "模型服务尚未保存，请重试");
+        message.success("模型服务已保存，可在创作页选择模型");
+    };
+
+    const closeChannelEditor = () => {
+        setEditingChannelId(null);
+        setNewChannelId(null);
+    };
+
+    const deleteChannel = async (id: string) => {
+        if (deleting.current.has(id)) return;
+        const latest = useConfigStore.getState().config;
+        const channel = latest.channels.find((item) => item.id === id);
+        if (channel && (channel.scope === "system" || isBuiltinBeefTVChannel(channel))) {
+            message.warning("系统渠道由管理员维护");
+            return;
+        }
+        deleting.current.add(id);
+        cancelCatalog(id);
+        const next = withChannels(latest, latest.channels.filter((item) => item.id !== id));
+        replaceConfig(next);
+        try {
+            await commitModelConfig(next);
+            await flushModelConfig();
+            const saved = getModelConfigPersistenceState();
+            if (saved.status === "error" || saved.dirty) throw new Error(saved.error || "删除尚未保存");
+            setDeleteFailures((items) => { const next = { ...items }; delete next[id]; return next; });
+            recordChannelDelete({ scope: channel?.scope, before: latest.channels.length, after: next.channels.length });
+            message.success("渠道已删除并保存");
+        } catch (error) {
+            const detail = error instanceof Error ? error.message : "保存失败";
+            setDeleteFailures((items) => ({ ...items, [id]: `${channel?.name || "渠道"}删除尚未保存：${detail}。请重试，重新加载可能恢复原渠道。` }));
+        } finally {
+            deleting.current.delete(id);
+        }
+    };
+
+    const setChannelLoading = (id: string, loading: boolean) => {
+        setLoadingChannelIds((items) => (loading ? Array.from(new Set([...items, id])) : items.filter((item) => item !== id)));
+    };
+
+    const refreshChannelModels = async (channel: ModelChannel) => {
+        if (isTopazUpscaleChannel(channel)) return;
+        const connectionError = channelConnectionError(channel, isBuiltinBeefTVChannel(channel) ? beefConnection : null);
+        if (connectionError) {
+            message.error(`${channel.name || "当前渠道"}：${connectionError}`);
+            return;
+        }
+        setChannelLoading(channel.id, true);
+        const request = requests.current.start(channel.id);
+        try {
+            const result = await fetchChannelModels(channel, true, request.signal);
+            if (!requests.current.current(channel.id, request)) return;
+            if (!result.models.length) {
+                message.warning(`${channel.name || "当前渠道"}未返回模型，已保留现有手工模型`);
+                return;
+            }
+            const latestConfig = useConfigStore.getState().config;
+            const latestChannel = latestConfig.channels.find((item) => item.id === channel.id);
+            if (!latestChannel) return;
+            if (channelConnectionSignature(latestChannel) !== channelConnectionSignature(channel)) {
+                message.warning(`${latestChannel.name || "当前渠道"}的连接配置已改变，已忽略旧的拉取结果`);
+                return;
+            }
+            if (localMode && isBuiltinBeefTVChannel(latestChannel)) {
+                const server = await getLocalModelConfig();
+                if (!requests.current.current(channel.id, request)) return;
+                const current = useConfigStore.getState().config;
+                replaceConfig(localWorkspaceConfig(normalizeConfigSnapshot({
+                    config: mergeManagedBeefTVCatalog(current, server.config),
+                }).config));
+            } else {
+                updateChannels(
+                    latestConfig.channels.map((item) => (item.id === channel.id ? applyFetchedChannelModelCatalog(item, result) : item)),
+                    latestConfig,
+                );
+            }
+            await flushModelConfig();
+            message.success(`${latestChannel.name || "当前渠道"}模型列表已更新`);
+        } catch (error) {
+            if (requests.current.current(channel.id, request)) message.error(channelModelFetchErrorMessage(error));
+        } finally {
+            if (requests.current.current(channel.id, request)) setChannelLoading(channel.id, false);
+            requests.current.finish(channel.id, request);
+        }
+    };
+
+    const refreshAllModels = async () => {
+        const catalogChannels = userChannels.filter(channel => !isTopazUpscaleChannel(channel));
+        const runnable = catalogChannels.filter((channel) => !channelConnectionError(channel, isBuiltinBeefTVChannel(channel) ? beefConnection : null));
+        const skipped = catalogChannels.filter((channel) => channelConnectionError(channel, isBuiltinBeefTVChannel(channel) ? beefConnection : null));
+        if (!runnable.length) {
+            const detail = skipped.map((channel) => `${channel.name || "未命名渠道"}：${channelConnectionError(channel, isBuiltinBeefTVChannel(channel) ? beefConnection : null)}`).join("；");
+            message.error(detail || "没有可拉取的个人模型渠道，请先填写有效 Base URL 和 API Key");
+            return;
+        }
+        setChannelLoading("all", true);
+        const batch = new Map<string, AbortController>();
+        try {
+            const results = await Promise.all(
+                runnable.map(async (channel) => {
+                    const request = requests.current.start(channel.id);
+                    batch.set(channel.id, request);
+                    try {
+                        const result = await fetchChannelModels(channel, true, request.signal);
+                        if (!requests.current.current(channel.id, request)) return { channel, result: { models: [], catalog: [] }, error: "", cancelled: true };
+                        return { channel, result, error: "" };
+                    } catch (error) {
+                        if (!requests.current.current(channel.id, request)) return { channel, result: { models: [], catalog: [] }, error: "", cancelled: true };
+                        return { channel, result: { models: [], catalog: [] }, error: channelModelFetchErrorMessage(error) };
+                    }
+                }),
+            );
+            const latestConfig = useConfigStore.getState().config;
+            const successful = results.filter((item) => {
+                const latestChannel = latestConfig.channels.find((channel) => channel.id === item.channel.id);
+                return Boolean(item.result.models.length && latestChannel && requests.current.current(item.channel.id, batch.get(item.channel.id)!) && channelConnectionSignature(latestChannel) === channelConnectionSignature(item.channel));
+            });
+            const stale = results.filter((item) => {
+                const latestChannel = latestConfig.channels.find((channel) => channel.id === item.channel.id);
+                return Boolean(item.result.models.length && (!latestChannel || channelConnectionSignature(latestChannel) !== channelConnectionSignature(item.channel)));
+            });
+            const failed = results.filter((item) => !item.cancelled && !item.result.models.length);
+            if (successful.length) {
+                const resultMap = new Map(successful.map((item) => [item.channel.id, item.result] as const));
+                const refreshedManagedZzzc = localMode && successful.some((item) => isBuiltinBeefTVChannel(item.channel));
+                const server = refreshedManagedZzzc ? await getLocalModelConfig() : null;
+                const current = useConfigStore.getState().config;
+                const nextChannels = current.channels.map((channel) => {
+                    if (refreshedManagedZzzc && isBuiltinBeefTVChannel(channel)) return channel;
+                    const fetched = resultMap.get(channel.id);
+                    return fetched ? applyFetchedChannelModelCatalog(channel, fetched) : channel;
+                });
+                const updated = withChannels(current, nextChannels);
+                replaceConfig(server ? localWorkspaceConfig(normalizeConfigSnapshot({
+                    config: mergeManagedBeefTVCatalog(updated, server.config),
+                }).config) : updated);
+                await flushModelConfig();
+                message.success(`已更新 ${successful.length} 个渠道的模型`);
+            }
+            const warnings = [
+                ...failed.map((item) => `${item.channel.name || "未命名渠道"}：${item.error || "未返回模型"}`),
+                ...stale.map((item) => `${item.channel.name || "未命名渠道"}：连接配置已改变，已忽略旧结果`),
+                ...skipped.map((channel) => `${channel.name || "未命名渠道"}：${channelConnectionError(channel, isBuiltinBeefTVChannel(channel) ? beefConnection : null)}`),
+            ];
+            if (warnings.length) message.warning(`${warnings.join("；")}。未更新的渠道已保留原有模型列表`);
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "批量读取模型失败，原有模型列表未改动");
+        } finally {
+            for (const [id, request] of batch) requests.current.finish(id, request);
+            setChannelLoading("all", false);
+        }
+    };
+
+    return (
+        <Form layout="vertical" requiredMark={false}>
+            {Object.entries(deleteFailures).map(([id, detail]) => <Alert key={id} type="error" showIcon title={detail} action={<Button onClick={() => void deleteChannel(id)}>重试删除</Button>} />)}
+            <PageHeader
+                title={localMode ? "本地模型渠道" : "个人渠道"}
+                actions={(
+                    <div className="settings-pane-header-actions flex w-full gap-2 sm:w-auto sm:shrink-0">
+                    {onOpenDiagnostics ? <Button className="h-10 flex-1 sm:h-8 sm:flex-none" icon={<Bug className="size-4" />} onClick={onOpenDiagnostics}>问题诊断</Button> : null}
+                    <Button className="h-10 flex-1 sm:h-8 sm:flex-none" icon={<RefreshCw className="size-4" />} loading={loadingChannelIds.includes("all")} disabled={loadingChannelIds.some((id) => id !== "all") || !userChannels.some(channel => !isTopazUpscaleChannel(channel))} onClick={() => void refreshAllModels()}>
+                        拉取全部渠道模型
+                    </Button>
+                    <Button type="primary" className="h-10 flex-1 sm:h-8 sm:flex-none" icon={<Plus className="size-4" />} onClick={addChannel}>
+                        添加模型服务
+                    </Button>
+                    </div>
+                )}
+            />
+            {userChannels.length ? (
+                <div className="settings-channel-list space-y-2">
+                    {userChannels.map((channel) => {
+                        const editing = editingChannelId === channel.id;
+                        const builtinZzzc = isBuiltinBeefTVChannel(channel);
+                        const topazUpscale = isTopazUpscaleChannel(channel);
+                        const pluginChannel = Boolean(channel.interfaceType && pluginServiceIds.has(channel.interfaceType));
+                        return (
+                            <section key={channel.id} data-onboarding={builtinZzzc ? "official-channel" : undefined} aria-labelledby={`channel-${channel.id}-title`} className="settings-channel p-2.5 sm:p-3">
+                                <div className="mb-2.5 flex flex-wrap items-start justify-between gap-2.5">
+                                    <div className="min-w-0 flex-1 basis-52">
+                                        <h3 id={`channel-${channel.id}-title`} className="flex items-center gap-2 text-sm font-semibold">
+                                            {builtinZzzc ? <img src={beefTVAppIcon} alt="" className="size-5 shrink-0 object-contain" draggable={false} /> : <ModelLogo icon={MODEL_SERVICE_PRESETS.find((preset) => preset.id === servicePresetFor(channel))?.icon} size={20} />}
+                                            {builtinZzzc ? "Zzzc" : channel.name || "未命名渠道"}
+                                        </h3>
+                                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-foreground/55">
+                                            {builtinZzzc ? (
+                                                <>
+                                                    <span>已保存 {channel.models.length} 个模型</span>
+                                                    <span>Zzzc 官方算力渠道，一键连接、开箱即用</span>
+                                                </>
+                                            ) : (
+                                                <span>{pluginChannel ? "插件提供" : channelProtocolLabel(channel)} · 已保存 {channel.models.length} 个模型</span>
+                                            )}
+                                            <ChannelStatus channel={channel} persistence={persistence} connection={builtinZzzc ? beefConnection : null} />
+                                        </div>
+                                        {topazUpscale ? <p className="mt-1 text-xs text-foreground/55">从图片或视频节点上方的「AI超分」使用</p> : null}
+                                        {!builtinZzzc && !topazUpscale && !pluginChannel && <ChannelRequestAddressLines channel={channel} />}
+                                    </div>
+                                    <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto sm:shrink-0">
+                                        {builtinZzzc && catalogSyncFailed ? <Button loading={beefBusy} onClick={() => void retryCatalog()}>重试更新模型列表</Button> : null}
+                                        {builtinZzzc ? (
+                                            <BeefTVConnectionActions
+                                                connection={beefConnection}
+                                                busy={beefBusy}
+                                                onConnect={() => void connect()}
+                                                onCancel={() => void cancel()}
+                                                onRetry={() => void connect()}
+                                                onDisconnect={() => void disconnect()}
+                                                onWallet={() => void openAccount()}
+                                            />
+                                        ) : null}
+                                        {!topazUpscale ? (
+                                        <Button
+                                            className="h-10 sm:h-8"
+                                            size="small"
+                                            icon={<RefreshCw className="size-3.5" />}
+                                            loading={loadingChannelIds.includes(channel.id)}
+                                            disabled={loadingChannelIds.includes("all") || (builtinZzzc && beefConnection?.state !== "connected")}
+                                            onClick={() => void refreshChannelModels(channel)}
+                                        >
+                                            拉取模型
+                                        </Button>
+                                        ) : null}
+                                        <Button
+                                            size="small"
+                                            icon={<Pencil className="size-3.5" />}
+                                            onClick={() => {
+                                                cancelCatalog(channel.id);
+                                                if (!builtinZzzc) { setServiceEditor(channel); return; }
+                                                setNewChannelId(null);
+                                                setEditingChannelId(channel.id);
+                                            }}
+                                        >
+                                            编辑
+                                        </Button>
+                                        {!builtinZzzc ? (
+                                            <Popconfirm classNames={{ root: "model-channel-delete-confirm" }} title="删除个人模型渠道？" description="该渠道关联的模型选择会同时移除。" okText="删除" cancelText="取消" okButtonProps={{ danger: true }} onOpenChange={recordChannelDeleteConfirmOpen} onConfirm={() => deleteChannel(channel.id)}>
+                                                    <Button
+                                                        title="删除渠道"
+                                                        className="size-10 p-0 sm:size-8"
+                                                        aria-label={`删除渠道 ${channel.name || "未命名渠道"}`}
+                                                        size="small"
+                                                        type="text"
+                                                        danger
+                                                        icon={<Trash2 className="size-3.5" />}
+                                                    />
+                                            </Popconfirm>
+                                        ) : null}
+                                    </div>
+                                </div>
+                                {editing && (
+                                    <ModelEditorModal
+                                        open
+                                        title={channel.id === newChannelId ? "新增自定义渠道" : "编辑自定义渠道"}
+                                        subtitle={channel.name}
+                                        onClose={closeChannelEditor}
+                                        footer={
+                                            <div className="model-editor-footer">
+                                                <span className="text-xs text-foreground/50">{localMode ? "更改实时保存到本地工作区" : "更改实时保存到云端渠道配置"}</span>
+                                                <div className="model-editor-footer-actions">
+                                                    <Button loading={loadingChannelIds.includes(channel.id)} onClick={() => void refreshChannelModels(channel)}>
+                                                        拉取模型
+                                                    </Button>
+                                                    <Button onClick={closeChannelEditor}>完成</Button>
+                                                </div>
+                                            </div>
+                                        }
+                                    >
+                                        <div className="model-editor-panel">
+                                            <section className="model-editor-section">
+                                                <div>
+                                                    <h2>连接信息</h2>
+                                                    <p className="mt-1 text-xs text-foreground/50">用于拉取模型目录并向当前渠道发起请求。</p>
+                                                </div>
+                                                <div className="model-editor-connection-fields grid gap-3 sm:grid-cols-2">
+                                                    <Form.Item label="渠道名称" htmlFor={`channel-${channel.id}-name`} className="mb-0 sm:col-span-1">
+                                                        <Input
+                                                            id={`channel-${channel.id}-name`}
+                                                            value={channel.name}
+                                                            disabled={builtinZzzc}
+                                                            placeholder="例如：我的 NewAPI"
+                                                            onChange={(event) => updateChannel(channel.id, { name: event.target.value })}
+                                                            onBlur={(event) => updateChannel(channel.id, { name: event.target.value.trim() || "未命名渠道" })}
+                                                        />
+                                                    </Form.Item>
+                                                    <Form.Item label="目录连接类型" className="mb-0 sm:col-span-1" extra={builtinZzzc ? "应用内置适配" : "仅影响模型目录拉取。"}>
+                                                        <Segmented<UserChannelConnection>
+                                                            block
+                                                            disabled={builtinZzzc}
+                                                            value={channelConnectionMode(channel)}
+                                                            options={[
+                                                                { label: "OpenAI", value: "openai" },
+                                                                { label: "Gemini", value: "gemini" },
+                                                            ]}
+                                                            onChange={(value) => updateChannelConnection(channel, value)}
+                                                        />
+                                                    </Form.Item>
+                                                    <Form.Item label="Base URL" htmlFor={`channel-${channel.id}-base-url`} className="mb-0 sm:col-span-1">
+                                                        <Input
+                                                            id={`channel-${channel.id}-base-url`}
+                                                            inputMode="url"
+                                                            value={channel.baseUrl}
+                                                            disabled={builtinZzzc}
+                                                            placeholder={localMode ? "填写本地服务 Base URL" : "填写云端渠道 Base URL"}
+                                                            onChange={(event) => updateChannel(channel.id, { baseUrl: event.target.value })}
+                                                            onBlur={(event) => updateChannel(channel.id, { baseUrl: event.target.value.trim().replace(/\/+$/u, "") })}
+                                                        />
+                                                    </Form.Item>
+                                                    {builtinZzzc ? (
+                                                        <Form.Item label="账号连接" className="mb-0 sm:col-span-2">
+                                                            <p className="m-0 text-sm leading-6 text-foreground/80">{zzzcConnectionLabel(beefConnection)}</p>
+                                                            {beefConnection?.balance === "zero" ? <p className="mt-1 text-xs leading-5 text-foreground/55">余额为 0 时仍可查看模型。生成时会提示余额不足。</p> : null}
+                                                        </Form.Item>
+                                                    ) : (
+                                                        <>
+                                                            <Form.Item label="API Key" htmlFor={`channel-${channel.id}-api-key`} className="mb-0 sm:col-span-1">
+                                                                <Input.Password
+                                                                    id={`channel-${channel.id}-api-key`}
+                                                                    autoComplete="new-password"
+                                                                    value={channel.apiKey}
+                                                                    placeholder={channel.apiFormat === "gemini" ? "填写 Gemini API Key" : "填写当前渠道 API Key"}
+                                                                    onChange={(event) => updateChannel(channel.id, { apiKey: event.target.value })}
+                                                                    onBlur={(event) => updateChannel(channel.id, { apiKey: event.target.value.trim() })}
+                                                                />
+                                                            </Form.Item>
+                                                            <Form.Item label="Secret Key（可选）" htmlFor={`channel-${channel.id}-secret-key`} className="mb-0 sm:col-span-1" extra="即梦等 AK/SK 协议需要；其他协议留空。">
+                                                                <Input.Password
+                                                                    id={`channel-${channel.id}-secret-key`}
+                                                                    autoComplete="new-password"
+                                                                    value={channel.secretKey || ""}
+                                                                    placeholder="填写 Secret Key"
+                                                                    onChange={(event) => updateChannel(channel.id, { secretKey: event.target.value })}
+                                                                    onBlur={(event) => updateChannel(channel.id, { secretKey: event.target.value.trim() })}
+                                                                />
+                                                            </Form.Item>
+                                                        </>
+                                                    )}
+                                                    <div className="sm:col-span-2">
+                                                        <ChannelHeadersEditor value={channel.headers} onChange={(headers) => updateChannel(channel.id, { headers })} />
+                                                    </div>
+                                                </div>
+                                            </section>
+                                            <section className="model-editor-section">
+                                                <div>
+                                                    <h2>模型与能力</h2>
+                                                    <p className="mt-1 text-xs text-foreground/50">维护渠道模型，并在单个模型中配置能力、接口格式和定价。</p>
+                                                </div>
+                                                <Form.Item label="模型列表" htmlFor={`channel-${channel.id}-models`} className="mb-0">
+                                                    <Select
+                                                        id={`channel-${channel.id}-models`}
+                                                        mode="tags"
+                                                        showSearch
+                                                        allowClear
+                                                        maxTagCount="responsive"
+                                                        tokenSeparators={[",", "\n"]}
+                                                        placeholder="输入模型名，或点击拉取模型"
+                                                        value={channel.models}
+                                                        onChange={(models) => updateChannel(channel.id, { models: uniqueModels(models) })}
+                                                    />
+                                                </Form.Item>
+                                                <ChannelModelSettings channel={channel} onChange={(modelProfiles) => updateChannel(channel.id, { modelProfiles })} />
+                                            </section>
+                                        </div>
+                                    </ModelEditorModal>
+                                )}
+                            </section>
+                        );
+                    })}
+                </div>
+            ) : (
+                <WorkspaceState
+                    icon="settings"
+                    compact
+                    title="连接你的第一个模型服务"
+                    action={
+                        <Button icon={<Plus className="size-4" />} onClick={addChannel}>
+                            添加模型服务
+                        </Button>
+                    }
+                />
+            )}
+            {serviceEditor !== undefined && <ModelServiceEditor initial={serviceEditor || undefined} onClose={() => setServiceEditor(undefined)} onSave={saveService} />}
+        </Form>
+    );
+}
+
+export function channelValidationError(channel: ModelChannel, connection?: ZzzcConnectionSummary | null) {
+    return channelConnectionError(channel, connection) || validateChannelHeaders(channel.headers) || (!channel.models.length ? "请添加至少一个模型" : "");
+}
+
+export function isChannelReady(channel: ModelChannel) {
+    return !channelValidationError(channel);
+}
+
+export function focusInvalidChannelField(channel: ModelChannel) {
+    const baseUrlError = channelConnectionError({ ...channel, apiKey: "valid", secretKey: "valid" });
+    const field = baseUrlError ? "base-url" : !channelHasGenerationCredential(channel) && !channelAllowsEmptyAPIKey(channel) ? "api-key" : requiresSecretKey(channel) && !channel.secretKey?.trim() ? "secret-key" : "models";
+    requestAnimationFrame(() => {
+        const element = document.getElementById(`channel-${channel.id}-${field}`);
+        element?.scrollIntoView({ behavior: "smooth", block: "center" });
+        element?.focus({ preventScroll: true });
+    });
+}
+
+function ChannelStatus({ channel, persistence, connection }: { channel: ModelChannel; persistence: ModelConfigPersistenceState; connection?: ZzzcConnectionSummary | null }) {
+    const receipts = useModelConnectionTests((state) => state.receipts);
+    const tested = channel.models.map((model) => currentModelConnectionReceipt(receipts, channel, model));
+    const passed = tested.filter((result) => result?.success).length;
+    const failed = tested.filter((result) => result && !result.success).length;
+    const error = channelValidationError(channel, connection);
+    const label = modelConfigChannelStatusLabel(channel, persistence, connection);
+    const testLabel = failed ? `${failed} 个模型测试失败` : passed ? `${passed}/${channel.models.length} 个模型测试通过` : label;
+    return (
+        <span className={`settings-channel-status ${error || failed ? "is-warning" : "is-ready"}`}>
+            <i aria-hidden="true" />
+            {isBuiltinBeefTVChannel(channel) ? label : error || (persistence.status === "saving" || persistence.status === "error" ? label : testLabel)}
+        </span>
+    );
+}
+
+
+export function modelConfigChannelStatusLabel(channel: ModelChannel, persistence: ModelConfigPersistenceState, connection?: ZzzcConnectionSummary | null) {
+    if (isBuiltinBeefTVChannel(channel)) {
+        if (connection?.state === "connected") return zzzcConnectionLabel(connection);
+        if (connection?.state && connection.state !== "disconnected") return zzzcConnectionLabel(connection);
+        if (channelHasManagedBeefTVCredential(channel)) return "待确认连接";
+        return "未连接";
+    }
+    if (!channelHasGenerationCredential(channel) && !channelAllowsEmptyAPIKey(channel)) return "待配置";
+    if (persistence.status === "saving") return "保存中";
+    if (persistence.status === "error") return "保存失败";
+    if (persistence.status === "saved") return "已保存 · 尚未测试";
+    return "尚未测试";
+}
+
+
+export function modelConfigChannelPresentation(channel: ModelChannel) {
+    const builtin = isBuiltinBeefTVChannel(channel);
+    return {
+        builtin,
+        deletable: !builtin,
+        adapterLabel: builtin ? "应用内置适配" : "",
+    };
+}
+
+
+function uniqueModels(models: string[]) {
+    return Array.from(new Set(models.map((model) => model.trim()).filter(Boolean)));
+}
+
+function channelModelFetchErrorMessage(error: unknown) {
+    if (getTransportFailureKind(error) === "timeout") return "读取模型目录超时，请检查地址和网络后重试；也可以手动添加模型 ID";
+    const detail = error instanceof Error ? error.message : "读取模型失败";
+    if (detail.includes("不允许访问本机") || detail.includes("不允许访问保留地址")) return `${detail}；可信私网服务需由部署管理员配置 CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS`;
+    return `${detail}；也可以直接在模型列表中手动输入模型名`;
+}
+
+function channelConnectionMode(channel: ModelChannel): UserChannelConnection {
+    return channel.apiFormat === "gemini" ? "gemini" : "openai";
+}
+
+function channelConnectionError(channel: ModelChannel, connection?: ZzzcConnectionSummary | null) {
+    const baseUrl = channel.baseUrl.trim();
+    if (!baseUrl) return "请填写 Base URL";
+    try {
+        const parsed = new URL(baseUrl);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "Base URL 只支持 HTTP 或 HTTPS";
+    } catch {
+        return "Base URL 格式不正确";
+    }
+    if (isBuiltinBeefTVChannel(channel)) {
+        if (connection?.state === "connected" || channelHasManagedBeefTVCredential(channel)) return "";
+        return "请先连接 Zzzc";
+    }
+    if (!channelHasGenerationCredential(channel) && !channelAllowsEmptyAPIKey(channel)) return "请填写 API Key / Access Key";
+    if (requiresSecretKey(channel) && !channel.secretKey?.trim()) return "当前协议需要填写 Secret Key";
+    return "";
+}
+
+function channelConnectionSignature(channel: ModelChannel) {
+    return [channel.baseUrl.trim(), channel.referenceAssetOrigin?.trim() || "", channel.apiKey.trim(), channel.secretKey?.trim() || "", channel.apiFormat, JSON.stringify(channel.headers || [])].join("\n");
+}
+
+function channelProtocolLabel(channel: ModelChannel) {
+    if (isTopazUpscaleChannel(channel)) return "fal · Topaz 专用超分";
+    return channelConnectionMode(channel) === "gemini" ? "Gemini 原生" : "OpenAI 兼容";
+}
+
+function isKnownDefaultBaseUrl(value: string) {
+    const normalized = value.trim().replace(/\/+$/, "");
+    if (!normalized) return true;
+    return [defaultBaseUrlForApiFormat("openai"), defaultBaseUrlForApiFormat("gemini")].some((candidate) => candidate.replace(/\/+$/, "") === normalized);
+}
+
+function requiresSecretKey(channel: ModelChannel) {
+    return channel.modelProfiles?.some((item) => item.protocol?.startsWith("volcengine-jimeng-")) === true;
+}

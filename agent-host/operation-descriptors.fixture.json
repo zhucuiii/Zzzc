@@ -1,0 +1,2248 @@
+[
+  {
+    "id": "asset.get",
+    "summary": "按 ID 读取单个素材",
+    "readOnly": true,
+    "scope": "workspace_read",
+    "params": {
+      "type": "object",
+      "properties": {
+        "assetId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "assetId"
+      ]
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "asset.list",
+    "summary": "列出素材库中的素材",
+    "readOnly": true,
+    "scope": "workspace_read",
+    "params": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer"
+        },
+        "pageSize": {
+          "type": "integer"
+        },
+        "query": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "favorite": {
+          "type": "boolean"
+        },
+        "recent": {
+          "type": "boolean"
+        },
+        "project": {
+          "type": "string"
+        },
+        "generated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.create",
+    "summary": "创建新画布",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "properties": {
+        "canvasId": {
+          "description": "可选自定义画布 ID；省略时由服务端生成",
+          "type": "string"
+        },
+        "folderId": {
+          "description": "可选画布文件夹 ID",
+          "type": "string"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        },
+        "projectId": {
+          "description": "可选关联项目 ID",
+          "type": "string"
+        },
+        "title": {
+          "description": "画布名称（默认：未命名画布）",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.document.commit",
+    "summary": "按 revision 提交整份画布文档",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "document": {
+          "type": "object"
+        },
+        "expectedRevision": {
+          "type": "integer"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        }
+      },
+      "required": [
+        "canvasId",
+        "expectedRevision",
+        "document",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.edge.create",
+    "summary": "连接两个节点",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "integer"
+        },
+        "fromNodeId": {
+          "type": "string"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        },
+        "toNodeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "canvasId",
+        "fromNodeId",
+        "toNodeId",
+        "expectedRevision",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.edge.delete",
+    "summary": "移除指定连线",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "edgeId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "integer"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        }
+      },
+      "required": [
+        "canvasId",
+        "expectedRevision",
+        "edgeId",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.generation.propose",
+    "summary": "按节点已保存参数冻结生成单与报价。核对返回的 targets.parameters 和 estimate 后再提交，参数或报价不一致时停止",
+    "readOnly": true,
+    "scope": "canvas",
+    "params": {
+      "type": "object",
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "nodeIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "maxItems": 8
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "image",
+            "video",
+            "audio"
+          ]
+        },
+        "productionNodeIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 24,
+          "description": "整片制作时列出全部计划生成的节点，nodeIds 只列当前参考已就绪的首批"
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "canvasId",
+        "nodeIds",
+        "kind"
+      ]
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.generation.submit",
+    "summary": "凭已批准生成单执行画布生成并计费",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "expectedModelConfigRevision": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "expectedRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "image",
+            "video",
+            "audio"
+          ],
+          "type": "string"
+        },
+        "nodeIds": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "type": "array"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        },
+        "orderId": {
+          "type": "string"
+        },
+        "proposalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "canvasId",
+        "nodeIds",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.get",
+    "summary": "读取画布内容（节点与连线）",
+    "readOnly": true,
+    "scope": "canvas",
+    "params": {
+      "type": "object",
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "canvasId"
+      ]
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.node.bind_asset",
+    "summary": "把素材库素材绑定到同类型节点",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "additionalProperties": false,
+      "properties": {
+        "assetId": {
+          "type": "string"
+        },
+        "canvasId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        },
+        "resourceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "canvasId",
+        "nodeId",
+        "assetId",
+        "expectedRevision",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "unsafe"
+  },
+  {
+    "id": "canvas.node.configure",
+    "summary": "设置媒体节点的提示词草稿与生成参数；不启动生成",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "additionalProperties": false,
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "image",
+            "video",
+            "audio"
+          ],
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        },
+        "patch": {
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "audioFormat": {
+              "description": "草稿参数",
+              "type": "string"
+            },
+            "audioInstructions": {
+              "description": "草稿参数",
+              "type": "string"
+            },
+            "audioPitch": {
+              "description": "草稿参数",
+              "type": "string"
+            },
+            "audioSpeed": {
+              "description": "草稿参数",
+              "type": "string"
+            },
+            "audioVoice": {
+              "description": "草稿参数",
+              "type": "string"
+            },
+            "audioVolume": {
+              "description": "草稿参数",
+              "type": "string"
+            },
+            "count": {
+              "description": "图片生成数量",
+              "type": "integer"
+            },
+            "generateAudio": {
+              "description": "草稿参数",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            },
+            "model": {
+              "description": "从 model.catalog 选择的完整模型键 channelId::modelKey",
+              "type": "string"
+            },
+            "prompt": {
+              "description": "下次生成提示词草稿，不覆盖现有成品",
+              "type": "string"
+            },
+            "quality": {
+              "description": "草稿参数",
+              "type": "string"
+            },
+            "seconds": {
+              "description": "视频输出时长，单位秒。从 model.catalog 的 capabilityConfig.video.duration 选择，以字符串传入",
+              "type": "string"
+            },
+            "size": {
+              "description": "图片尺寸或视频画幅比例。视频从 model.catalog 的 capabilityConfig.video.ratios 选择，例如 16:9。视频分辨率使用 vquality",
+              "type": "string"
+            },
+            "transparentBackground": {
+              "description": "草稿参数",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            },
+            "videoEditOperation": {
+              "description": "草稿参数",
+              "type": "string"
+            },
+            "vquality": {
+              "description": "视频输出分辨率。从 model.catalog 的 capabilityConfig.video.resolutions 选择，例如 480p、768p、1080p",
+              "type": "string"
+            },
+            "watermark": {
+              "description": "草稿参数",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "canvasId",
+        "nodeId",
+        "kind",
+        "expectedRevision",
+        "patch",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.node.delete",
+    "summary": "移除画布节点及连线",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "integer"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        }
+      },
+      "required": [
+        "canvasId",
+        "expectedRevision",
+        "nodeId",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.node.move",
+    "summary": "移动节点位置",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "integer"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        },
+        "position": {
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "x",
+            "y"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "canvasId",
+        "expectedRevision",
+        "nodeId",
+        "position",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.node.update",
+    "summary": "局部修改节点（省略的字段保持原样）",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "integer"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        },
+        "patch": {
+          "properties": {
+            "content": {
+              "description": "文本节点的正文，或下次生成提示词草稿",
+              "type": "string"
+            },
+            "prompt": {
+              "description": "外部 CLI/MCP 提示词草稿别名",
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "canvasId",
+        "nodeId",
+        "patch",
+        "expectedRevision",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.nodes.create",
+    "summary": "批量创建画布节点",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "integer"
+        },
+        "nodes": {
+          "items": {
+            "properties": {
+              "prompt": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "type"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        }
+      },
+      "required": [
+        "canvasId",
+        "nodes",
+        "expectedRevision",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.project.export",
+    "summary": "免费导出可编辑工程 ZIP",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        }
+      },
+      "required": [
+        "canvasId",
+        "expectedRevision",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.script.prepare",
+    "summary": "准备分镜脚本与可选首帧/视频草稿（不开始生成）",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "additionalProperties": false,
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "image": {
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "size": {
+              "type": "string"
+            },
+            "title": {
+              "description": "标题模板，{n} 为镜号，如「镜 {n} 首帧」；省略默认「镜头 {n} · 首帧」",
+              "maxLength": 40,
+              "type": "string"
+            }
+          },
+          "required": [
+            "model"
+          ],
+          "type": "object"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        },
+        "referenceNodeIds": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "type": "array"
+        },
+        "rowIds": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "type": "array"
+        },
+        "script": {
+          "additionalProperties": false,
+          "description": "新建分镜（省略 image/video 只建分镜）",
+          "properties": {
+            "rows": {
+              "items": {
+                "description": "行ID与镜号由服务端分配",
+                "properties": {
+                  "dialogue": {
+                    "type": "string"
+                  },
+                  "durationSeconds": {
+                    "type": "number"
+                  },
+                  "imageGenerationPrompt": {
+                    "type": "string"
+                  },
+                  "plotDescription": {
+                    "type": "string"
+                  },
+                  "videoMotionPrompt": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "maxItems": 8,
+              "minItems": 1,
+              "type": "array"
+            },
+            "title": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "title",
+            "rows"
+          ],
+          "type": "object"
+        },
+        "video": {
+          "properties": {
+            "generateAudio": {
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "size": {
+              "type": "string"
+            },
+            "title": {
+              "description": "标题模板，{n} 为镜号，如「镜 {n} 视频」；省略默认「镜头 {n} · 视频」",
+              "maxLength": 40,
+              "type": "string"
+            }
+          },
+          "required": [
+            "model",
+            "generateAudio"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "canvasId",
+        "expectedRevision",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.script.row.remove",
+    "summary": "按行 ID 删除分镜行并重排镜号",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "integer"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        },
+        "rowIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "canvasId",
+        "nodeId",
+        "expectedRevision",
+        "rowIds",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.script.row.update",
+    "summary": "按行 ID 局部更新分镜行（自动同步已绑定且未单独手改的首帧/视频节点草稿）",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "integer"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        },
+        "patches": {
+          "items": {
+            "properties": {
+              "dialogue": {
+                "type": "string"
+              },
+              "durationSeconds": {
+                "type": "number"
+              },
+              "imageGenerationPrompt": {
+                "type": "string"
+              },
+              "imageNodeId": {
+                "description": "绑定图片节点；空串解绑",
+                "type": "string"
+              },
+              "plotDescription": {
+                "type": "string"
+              },
+              "rowId": {
+                "type": "string"
+              },
+              "videoMotionPrompt": {
+                "type": "string"
+              },
+              "videoNodeId": {
+                "description": "绑定视频节点；空串解绑",
+                "type": "string"
+              }
+            },
+            "required": [
+              "rowId"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "canvasId",
+        "nodeId",
+        "expectedRevision",
+        "patches",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.script.rows.append",
+    "summary": "向分镜脚本追加分镜行",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "integer"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        },
+        "rows": {
+          "items": {
+            "description": "行ID与镜号由服务端分配",
+            "properties": {
+              "dialogue": {
+                "type": "string"
+              },
+              "durationSeconds": {
+                "type": "number"
+              },
+              "imageGenerationPrompt": {
+                "type": "string"
+              },
+              "plotDescription": {
+                "type": "string"
+              },
+              "videoMotionPrompt": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "canvasId",
+        "nodeId",
+        "expectedRevision",
+        "rows",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.search",
+    "summary": "搜索工作区内的画布",
+    "readOnly": true,
+    "scope": "workspace_read",
+    "params": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer"
+        },
+        "pageSize": {
+          "type": "integer"
+        },
+        "query": {
+          "type": "string"
+        },
+        "canvasId": {
+          "type": "string"
+        },
+        "sort": {
+          "type": "string"
+        }
+      }
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.task.bind",
+    "summary": "把已交付任务产物绑定到节点",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        },
+        "outputIndex": {
+          "type": "integer"
+        },
+        "taskId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "canvasId",
+        "taskId",
+        "nodeId",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.timeline.render",
+    "summary": "免费本地渲染已保存的时间线",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        },
+        "options": {
+          "properties": {
+            "burnSubtitles": {
+              "type": "boolean"
+            },
+            "fps": {
+              "type": "integer"
+            },
+            "height": {
+              "type": "integer"
+            },
+            "sampleRate": {
+              "type": "integer"
+            },
+            "width": {
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "canvasId",
+        "expectedRevision",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "canvas.timeline.update",
+    "summary": "修改画布时间线或用 refreshNodeIds 局部刷新节点素材",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "description": "timeline 与 refreshNodeIds 必须且只能提供一个；服务端校验互斥条件。",
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "integer"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        },
+        "refreshNodeIds": {
+          "description": "仅刷新指定节点素材引用（与 timeline 二选一）",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "timeline": {
+          "description": "时间线 v2（毫秒）；可见 video/image 不可重叠",
+          "properties": {
+            "clips": {
+              "items": {
+                "properties": {
+                  "durationMs": {
+                    "type": "integer"
+                  },
+                  "fadeInMs": {
+                    "type": "integer"
+                  },
+                  "fadeOutMs": {
+                    "type": "integer"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "video",
+                      "image",
+                      "audio",
+                      "subtitle"
+                    ],
+                    "type": "string"
+                  },
+                  "nodeId": {
+                    "type": "string"
+                  },
+                  "sourceStartMs": {
+                    "type": "integer"
+                  },
+                  "startMs": {
+                    "type": "integer"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "trackId": {
+                    "type": "string"
+                  },
+                  "volume": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "trackId",
+                  "startMs",
+                  "durationMs"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "durationMs": {
+              "type": "integer"
+            },
+            "output": {
+              "properties": {
+                "burnSubtitles": {
+                  "type": "boolean"
+                },
+                "fps": {
+                  "type": "integer"
+                },
+                "height": {
+                  "type": "integer"
+                },
+                "width": {
+                  "type": "integer"
+                }
+              },
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "tracks": {
+              "items": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "video",
+                      "audio",
+                      "subtitle",
+                      "text",
+                      "image"
+                    ],
+                    "type": "string"
+                  },
+                  "muted": {
+                    "type": "boolean"
+                  },
+                  "visible": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "version": {
+              "enum": [
+                2
+              ],
+              "type": "integer"
+            }
+          },
+          "required": [
+            "version",
+            "tracks",
+            "clips",
+            "durationMs"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "canvasId",
+        "expectedRevision",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "conversation.message.attach",
+    "summary": "把已交付任务产物绑定到对话消息",
+    "readOnly": false,
+    "scope": "conversation",
+    "params": {
+      "properties": {
+        "conversationId": {
+          "type": "string"
+        },
+        "messageId": {
+          "type": "string"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        },
+        "outputIndex": {
+          "type": "integer"
+        },
+        "taskId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "conversationId",
+        "taskId",
+        "messageId",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [],
+    "replay": "unsafe"
+  },
+  {
+    "id": "generation.estimate",
+    "summary": "按已保存的价格目录估算一组生成的费用；不联网、不写入、不建任务，没有价格的项目会写明原因",
+    "readOnly": true,
+    "scope": "workspace_read",
+    "params": {
+      "type": "object",
+      "properties": {
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "properties": {
+              "modelKey": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "image",
+                  "video",
+                  "audio"
+                ]
+              },
+              "parameters": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "与节点相同的生成参数，如 size、quality、count、vquality、seconds"
+              },
+              "referenceImages": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "referenceVideos": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "text": {
+                "type": "string",
+                "description": "配音台词"
+              }
+            },
+            "required": [
+              "modelKey",
+              "kind"
+            ]
+          }
+        }
+      },
+      "required": [
+        "targets"
+      ]
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "media.check",
+    "summary": "客观测量黑屏、音量与静音停顿；不能判断声音内容，不能替代实际听看",
+    "readOnly": true,
+    "scope": "canvas",
+    "params": {
+      "type": "object",
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "assetId": {
+          "type": "string"
+        },
+        "resourceId": {
+          "type": "string"
+        },
+        "expectedVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startMs": {
+          "type": "integer"
+        },
+        "endMs": {
+          "type": "integer"
+        },
+        "mode": {
+          "type": "string",
+          "description": "frames静态截图（不能判断连续运动或声音）；video连续；audio声音",
+          "enum": [
+            "frames",
+            "video",
+            "audio"
+          ]
+        }
+      },
+      "required": [
+        "canvasId",
+        "expectedVersion"
+      ]
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "media.inspect",
+    "summary": "读取媒体片段（每次最多 15 秒；图片可用 imageCrop 分区查看）",
+    "readOnly": true,
+    "scope": "canvas",
+    "params": {
+      "type": "object",
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "assetId": {
+          "type": "string"
+        },
+        "resourceId": {
+          "type": "string"
+        },
+        "expectedVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startMs": {
+          "type": "integer"
+        },
+        "endMs": {
+          "type": "integer"
+        },
+        "mode": {
+          "type": "string",
+          "description": "frames静态截图（不能判断连续运动或声音）；video连续；audio声音",
+          "enum": [
+            "frames",
+            "video",
+            "audio"
+          ]
+        },
+        "imageCrop": {
+          "type": "object",
+          "description": "图片局部原像素裁剪（0~1比例）",
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "width": {
+              "type": "number"
+            },
+            "height": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "width",
+            "height"
+          ]
+        }
+      },
+      "required": [
+        "canvasId",
+        "expectedVersion"
+      ]
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "media.overview",
+    "summary": "获取媒体版本、时长与概览（可选15秒内 evidence）；概览不能替代连续影音审查",
+    "readOnly": true,
+    "scope": "canvas",
+    "params": {
+      "type": "object",
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "assetId": {
+          "type": "string"
+        },
+        "resourceId": {
+          "type": "string"
+        },
+        "expectedVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startMs": {
+          "type": "integer"
+        },
+        "endMs": {
+          "type": "integer"
+        },
+        "mode": {
+          "type": "string",
+          "description": "frames静态截图（不能判断连续运动或声音）；video连续；audio声音",
+          "enum": [
+            "frames",
+            "video",
+            "audio"
+          ]
+        },
+        "evidence": {
+          "type": "object",
+          "description": "一次读取15秒内区间的证据",
+          "properties": {
+            "startMs": {
+              "type": "integer"
+            },
+            "endMs": {
+              "type": "integer"
+            },
+            "modes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "frames",
+                  "video",
+                  "audio"
+                ]
+              }
+            },
+            "checks": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "startMs",
+            "endMs",
+            "modes"
+          ]
+        }
+      },
+      "required": [
+        "canvasId"
+      ]
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "media.review",
+    "summary": "用独立多模态审片模型检查指定区间（可能收费，最多15秒）",
+    "readOnly": true,
+    "scope": "canvas",
+    "params": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "assetId": {
+          "type": "string"
+        },
+        "resourceId": {
+          "type": "string"
+        },
+        "expectedVersion": {
+          "type": "string"
+        },
+        "startMs": {
+          "type": "integer"
+        },
+        "endMs": {
+          "type": "integer"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "video",
+            "audio"
+          ]
+        },
+        "question": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "canvasId",
+        "expectedVersion",
+        "startMs",
+        "endMs",
+        "question"
+      ]
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only",
+      "canvas"
+    ],
+    "replay": "unsafe"
+  },
+  {
+    "id": "model.catalog",
+    "summary": "按类型查询可用模型、参考能力与报价",
+    "readOnly": true,
+    "scope": "workspace_read",
+    "params": {
+      "type": "object",
+      "properties": {
+        "capability": {
+          "type": "string",
+          "enum": [
+            "text",
+            "image",
+            "video",
+            "audio"
+          ]
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "video",
+              "audio"
+            ]
+          }
+        }
+      }
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "project.canvas.search",
+    "summary": "在当前项目查找媒体或画布",
+    "readOnly": true,
+    "scope": "canvas",
+    "params": {
+      "type": "object",
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "image",
+            "video",
+            "audio"
+          ]
+        },
+        "page": {
+          "type": "integer"
+        },
+        "pageSize": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "canvasId"
+      ]
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "project.media.search",
+    "summary": "在当前项目查找媒体或画布",
+    "readOnly": true,
+    "scope": "canvas",
+    "params": {
+      "type": "object",
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "image",
+            "video",
+            "audio"
+          ]
+        },
+        "page": {
+          "type": "integer"
+        },
+        "pageSize": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "canvasId"
+      ]
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "skill.catalog",
+    "summary": "列出已安装技能",
+    "readOnly": true,
+    "scope": "workspace_read",
+    "params": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "q": {
+          "type": "string"
+        },
+        "offset": {
+          "type": "integer"
+        },
+        "limit": {
+          "type": "integer"
+        }
+      }
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "skill.draft",
+    "summary": "保存私人技能草稿（不上传）",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "additionalProperties": false,
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "instruction": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        }
+      },
+      "required": [
+        "canvasId",
+        "name",
+        "description",
+        "instruction",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "unsafe"
+  },
+  {
+    "id": "skill.file",
+    "summary": "读取选定技能固定版本的正文或包内文件",
+    "readOnly": true,
+    "scope": "canvas",
+    "params": {
+      "type": "object",
+      "properties": {
+        "skillId": {
+          "type": "string"
+        },
+        "versionId": {
+          "type": "string"
+        },
+        "contentHash": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "skillId",
+        "versionId",
+        "contentHash"
+      ]
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "skill.get",
+    "summary": "读取选定技能固定版本的正文或包内文件",
+    "readOnly": true,
+    "scope": "canvas",
+    "params": {
+      "type": "object",
+      "properties": {
+        "skillId": {
+          "type": "string"
+        },
+        "versionId": {
+          "type": "string"
+        },
+        "contentHash": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "skillId",
+        "versionId",
+        "contentHash"
+      ]
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "skill.market.file",
+    "summary": "读取公共技能指定版本的文件",
+    "readOnly": true,
+    "scope": "workspace_read",
+    "params": {
+      "type": "object",
+      "properties": {
+        "skillId": {
+          "type": "string"
+        },
+        "releaseId": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "offset": {
+          "type": "integer"
+        },
+        "limit": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "skillId",
+        "releaseId",
+        "path"
+      ]
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "skill.market.get",
+    "summary": "读取公共市场技能版本详情",
+    "readOnly": true,
+    "scope": "workspace_read",
+    "params": {
+      "type": "object",
+      "properties": {
+        "skillId": {
+          "type": "string"
+        },
+        "releaseId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "skillId",
+        "releaseId"
+      ]
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "skill.market.search",
+    "summary": "搜索公共技能市场",
+    "readOnly": true,
+    "scope": "workspace_read",
+    "params": {
+      "type": "object",
+      "properties": {
+        "q": {
+          "type": "string"
+        },
+        "page": {
+          "type": "integer"
+        },
+        "pageSize": {
+          "type": "integer"
+        }
+      }
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "skill.publish.prepare",
+    "summary": "准备技能投稿预览，等待用户确认上传",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "marketSkillId": {
+          "description": "existing时填市场ID，禁填本机skillId",
+          "type": "string"
+        },
+        "metadata": {
+          "properties": {
+            "license": {
+              "type": "string"
+            },
+            "requirementNotes": {
+              "type": "string"
+            },
+            "requirements": {
+              "description": "纯文字填[]，禁填text",
+              "items": {
+                "enum": [
+                  "beeftv.canvas",
+                  "model.image",
+                  "model.video",
+                  "model.audio"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "license",
+            "requirements"
+          ],
+          "type": "object"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        },
+        "publicationTarget": {
+          "enum": [
+            "new",
+            "existing"
+          ],
+          "type": "string"
+        },
+        "skillId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "canvasId",
+        "skillId",
+        "publicationTarget",
+        "metadata",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "unsafe"
+  },
+  {
+    "id": "skill.publish.status",
+    "summary": "读取技能投稿状态",
+    "readOnly": true,
+    "scope": "workspace_read",
+    "params": {
+      "type": "object",
+      "properties": {
+        "canvasId": {
+          "type": "string"
+        },
+        "planId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "canvasId",
+        "planId"
+      ],
+      "additionalProperties": false
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "skill.script.run",
+    "summary": "运行已选用技能的脚本（用户确认后执行）",
+    "readOnly": false,
+    "scope": "canvas",
+    "params": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "items": {
+            "maxLength": 4096,
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "canvasId": {
+          "type": "string"
+        },
+        "contentHash": {
+          "type": "string"
+        },
+        "note": {
+          "description": "告诉用户运行原因",
+          "maxLength": 500,
+          "type": "string"
+        },
+        "operationId": {
+          "description": "调用方生成的稳定幂等键；重试同一操作必须复用同一个值，服务端据此回读原结果",
+          "type": "string"
+        },
+        "scriptPath": {
+          "description": "scripts/ 或 script/ 下的相对路径",
+          "type": "string"
+        },
+        "skillId": {
+          "type": "string"
+        },
+        "stdin": {
+          "maxLength": 65536,
+          "type": "string"
+        },
+        "timeoutSec": {
+          "description": "默认 300",
+          "maximum": 1800,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "useWorkspaceOutputDir": {
+          "description": "输出目录经 BEEFTV_OUTPUT_DIR 传入",
+          "type": "boolean"
+        },
+        "versionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "canvasId",
+        "skillId",
+        "versionId",
+        "contentHash",
+        "scriptPath",
+        "operationId"
+      ],
+      "type": "object"
+    },
+    "assistantModes": [
+      "full-access",
+      "canvas"
+    ],
+    "replay": "safe"
+  },
+  {
+    "id": "task.get",
+    "summary": "查询任务状态与产物",
+    "readOnly": true,
+    "scope": "workspace_read",
+    "params": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "taskId"
+      ]
+    },
+    "assistantModes": [
+      "full-access",
+      "read-only",
+      "canvas"
+    ],
+    "replay": "safe"
+  }
+]

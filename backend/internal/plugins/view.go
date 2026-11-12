@@ -1,0 +1,193 @@
+package plugins
+
+import (
+	"encoding/json"
+	"strings"
+	"time"
+
+	"infinite-canvas/backend/internal/protocol"
+)
+
+// View is the backend representation consumed by the single frontend plugin
+// center. Protocol-specific runtime data stays nested under Manifest so the
+// public plugin contract can grow without adding another center API.
+type View struct {
+	Manifest    ManifestView   `json:"manifest"`
+	Source      string         `json:"source"`
+	FileName    string         `json:"fileName"`
+	Package     string         `json:"package"`
+	PackageDir  string         `json:"packageDir,omitempty"`
+	PackageSpec string         `json:"packageSpec,omitempty"`
+	SkillDirs   []string       `json:"skillDirs,omitempty"`
+	SHA256      string         `json:"sha256"`
+	InstalledAt time.Time      `json:"installedAt"`
+	UpdatedAt   time.Time      `json:"updatedAt"`
+	Status      string         `json:"status"`
+	Error       string         `json:"error,omitempty"`
+	Management  ManagementView `json:"management"`
+	// Retention is set only for a plugin this release no longer ships but that
+	// saved configuration or unfinished tasks still need.
+	Retention *RetentionView `json:"retention,omitempty"`
+}
+
+type ManifestView struct {
+	APIVersion    string                         `json:"apiVersion"`
+	ID            string                         `json:"id"`
+	Name          string                         `json:"name"`
+	Version       string                         `json:"version"`
+	Client        string                         `json:"client,omitempty"`
+	Surfaces      []string                       `json:"surfaces,omitempty"`
+	Description   string                         `json:"description,omitempty"`
+	Documentation string                         `json:"documentation,omitempty"`
+	Author        string                         `json:"author,omitempty"`
+	Permissions   []string                       `json:"permissions"`
+	Trusted       bool                           `json:"trusted"`
+	Runtime       protocol.ManifestRuntime       `json:"runtime,omitempty"`
+	Configuration protocol.ManifestConfiguration `json:"configuration,omitempty"`
+	Contributes   protocol.ManifestContributions `json:"contributes"`
+	// Revision 是 npm 插件安装内容的指纹。同版本从文件夹重新安装后它会变，浏览器据此重新加载插件界面代码。
+	Revision string `json:"revision,omitempty"`
+}
+
+// ManagementView is computed by the host. Uploaded manifests cannot choose
+// their own privilege or activation scope.
+type ManagementView struct {
+	Origin             string `json:"origin"`
+	Kind               string `json:"kind"`
+	ActivationScope    string `json:"activationScope"`
+	ConfigurationScope string `json:"configurationScope"`
+	// BuiltInInterface marks a request format shipped with the app as a
+	// declarative archive. It is chosen in model settings, not managed as a plugin.
+	BuiltInInterface bool `json:"builtInInterface,omitempty"`
+}
+
+type StateView struct {
+	PluginID          string `json:"pluginId"`
+	PlatformAvailable bool   `json:"platformAvailable"`
+	UserEnabled       bool   `json:"userEnabled"`
+	UserConfigured    bool   `json:"userConfigured"`
+	EffectiveEnabled  bool   `json:"effectiveEnabled"`
+	CanToggle         bool   `json:"canToggle"`
+	CanConfigure      bool   `json:"canConfigure"`
+	BlockedReason     string `json:"blockedReason,omitempty"`
+}
+
+type AdminStateView struct {
+	StateView
+	EnabledUserCount int64 `json:"enabledUserCount"`
+}
+
+// Record is the in-memory installed plugin snapshot owned by Runtime.
+type Record struct {
+	Raw           []byte
+	Metadata      protocol.Metadata
+	Source        string
+	FileName      string
+	PackagePath   string
+	PackageSHA256 string
+	PackageDir    string
+	PackageSpec   string
+	SkillDirs     []string
+	SHA256        string
+	InstalledAt   time.Time
+	UpdatedAt     time.Time
+	Status        string
+	Error         string
+	// Retention is derived on startup and deliberately not persisted.
+	Retention *RetentionView
+}
+
+// RegistryRecord is the committed plugin registry row. Production stores it
+// in SystemSetting plugin_registry; plugin_registry.json is a one-time import.
+type RegistryRecord struct {
+	ID            string          `json:"id"`
+	Raw           json.RawMessage `json:"manifest"`
+	Source        string          `json:"source"`
+	FileName      string          `json:"fileName,omitempty"`
+	PackagePath   string          `json:"packagePath,omitempty"`
+	PackageSHA256 string          `json:"packageSha256,omitempty"`
+	PackageDir    string          `json:"packageDir,omitempty"`
+	PackageSpec   string          `json:"packageSpec,omitempty"`
+	SkillDirs     []string        `json:"skillDirs,omitempty"`
+	LoadError     string          `json:"loadError,omitempty"`
+	InstalledAt   time.Time       `json:"installedAt"`
+	UpdatedAt     time.Time       `json:"updatedAt"`
+}
+
+func manifestView(raw []byte, metadata protocol.Metadata, source string) ManifestView {
+	var manifest protocol.Manifest
+	_ = json.Unmarshal(raw, &manifest)
+	if manifest.Metadata.ID == "" {
+		manifest.Metadata = metadata
+	}
+	apiVersion := manifest.APIVersion
+	if apiVersion == "" {
+		apiVersion = "beeftv.plugin/v1"
+	}
+	permissions := manifest.Permissions
+	if permissions == nil {
+		// A plain pi package declares none; clients read this field as a list.
+		permissions = []string{}
+	}
+	return ManifestView{
+		ID: metadata.ID, Name: metadata.Name, Version: metadata.Version, APIVersion: apiVersion, Client: manifest.Client, Surfaces: manifest.Surfaces,
+		Description: metadata.Description, Documentation: metadata.Documentation, Author: metadata.Vendor,
+		Permissions: permissions, Trusted: IsBuiltInSource(source), Runtime: manifest.Runtime,
+		Configuration: manifest.Configuration, Contributes: manifest.Contributes,
+	}
+}
+
+func viewFromRecord(item Record) View {
+	manifest := manifestView(item.Raw, item.Metadata, item.Source)
+	manifest.Revision = item.PackageSHA256
+	return View{
+		Manifest:    manifest,
+		Source:      item.Source,
+		FileName:    item.FileName,
+		Package:     protocol.PluginPackageFormat,
+		PackageDir:  item.PackageDir,
+		PackageSpec: item.PackageSpec,
+		SkillDirs:   cloneStringSlice(item.SkillDirs),
+		SHA256:      item.SHA256,
+		InstalledAt: item.InstalledAt,
+		UpdatedAt:   item.UpdatedAt,
+		Status:      item.Status,
+		Error:       item.Error,
+		Retention:   cloneRetention(item.Retention),
+	}
+}
+
+func clonePluginView(view View) View {
+	data, err := json.Marshal(view.Manifest)
+	if err != nil {
+		return sanitizedPluginView(view)
+	}
+	var manifest ManifestView
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return sanitizedPluginView(view)
+	}
+	view.Manifest = manifest
+	view.Retention = cloneRetention(view.Retention)
+	return view
+}
+
+func sanitizedPluginView(view View) View {
+	view.Manifest.Surfaces = cloneStringSlice(view.Manifest.Surfaces)
+	view.Manifest.Permissions = cloneStringSlice(view.Manifest.Permissions)
+	view.Manifest.Runtime = protocol.ManifestRuntime{}
+	view.Manifest.Configuration = protocol.ManifestConfiguration{}
+	view.Manifest.Contributes = protocol.ManifestContributions{}
+	if strings.TrimSpace(view.Error) == "" {
+		view.Error = "插件清单无法展示"
+	}
+	return view
+}
+
+func cloneStringSlice(values []string) []string {
+	if values == nil {
+		return nil
+	}
+	out := make([]string, len(values))
+	copy(out, values)
+	return out
+}
