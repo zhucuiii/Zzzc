@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 
 import { CanvasNodePanelOverlay } from "@/components/canvas/canvas-workspace-overlays";
@@ -57,8 +58,10 @@ export function mountNodePanelHarness(host: HTMLElement, options: PanelHarnessOp
 
         useEffect(() => {
             const api: PanelHarnessApi = {
-                patchNode: (patch) => setNode((current) => applyNodeConfigPatch(current, patch)),
-                setNodeGeometry: (geometry) => setNode((current) => ({ ...current, width: geometry.width, height: geometry.height, position: geometry.position })),
+                patchNode: (patch) => flushSync(() => setNode((current) => applyNodeConfigPatch(current, patch))),
+                // Canvas pointer handlers flush their state synchronously; match
+                // that so transition-start frames are deterministic in tests.
+                setNodeGeometry: (geometry) => flushSync(() => setNode((current) => ({ ...current, width: geometry.width, height: geometry.height, position: geometry.position }))),
                 setContainerSize,
                 setViewport,
                 setViewportInteracting: (active) => {

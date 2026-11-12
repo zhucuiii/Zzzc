@@ -149,14 +149,16 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
             panel.style.transform = `translate3d(${position.left}px, ${position.top}px, 0)`;
         };
         update(viewport);
-        // Enable the geometry transition only after the first painted frame.
+        // Enable the geometry transition only after the first painted frame, so
+        // the panel's initial placement is never animated.
         let enableFrame: number | null = null;
         if (!animatedRef.current) {
-            enableFrame = requestAnimationFrame(() => {
+            enableFrame = requestAnimationFrame(() => requestAnimationFrame(() => {
                 enableFrame = null;
+                if (disposed) return;
                 animatedRef.current = true;
                 update(liveViewport);
-            });
+            }));
         }
         const resizeObserver = new ResizeObserver(() => {
             const nextSize = { width: container.clientWidth, height: container.clientHeight };

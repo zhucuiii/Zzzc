@@ -7,20 +7,26 @@ let browser: Browser;
 let page: Page;
 let server: ReturnType<typeof Bun.serve>;
 let script: string;
+let realNodeScript: string;
 
-beforeAll(async () => {
+async function buildHarness(entrypoint: string) {
     const bundle = await Bun.build({
-        entrypoints: [import.meta.dir + "/fixtures/canvas-node-panel-harness.tsx"],
+        entrypoints: [entrypoint],
         target: "browser", format: "esm",
         define: { "import.meta.env": "{}", "process.env.NODE_ENV": '"production"' },
         plugins: [{ name: "alias", setup(builder) {
-            builder.onLoad({ filter: /src\/components\/model-logo\.tsx$/ }, () => ({ contents: "export function ModelLogo() { return null; }", loader: "js" }));
+            builder.onLoad({ filter: /src[\\/]components[\\/]model-logo\.tsx$/ }, () => ({ contents: "export function ModelLogo() { return null; }", loader: "js" }));
             builder.onLoad({ filter: /\.(css|svg|png|jpe?g|gif|webp|woff2?)$/ }, () => ({ contents: "export default ''", loader: "js" }));
             builder.onResolve({ filter: /^@\// }, (args) => ({ path: Bun.resolveSync("../src/" + args.path.slice(2), import.meta.dir) }));
         } }],
     });
     if (!bundle.success) throw new Error(bundle.logs.join("\n"));
-    script = await bundle.outputs.find((output) => output.path.endsWith(".js"))!.text();
+    return bundle.outputs.find((output) => output.path.endsWith(".js"))!.text();
+}
+
+beforeAll(async () => {
+    script = await buildHarness(import.meta.dir + "/fixtures/canvas-node-panel-harness.tsx");
+    realNodeScript = await buildHarness(import.meta.dir + "/fixtures/canvas-node-panel-real-node-harness.tsx");
     // The page loads the production CSS bundle built from src/styles/globals.css.
     // Tests assert that the node/panel transition rules come from that stylesheet.
     const css = await productCss();
@@ -29,12 +35,16 @@ beforeAll(async () => {
         fetch(request) {
             const path = new URL(request.url).pathname;
             if (path === "/harness.js") return new Response(script, { headers: { "Content-Type": "application/javascript" } });
+            if (path === "/real.js") return new Response(realNodeScript, { headers: { "Content-Type": "application/javascript" } });
             if (path === "/harness.css") return new Response(css, { headers: { "Content-Type": "text/css" } });
+            if (path === "/real") return new Response('<!doctype html><html><head><link rel="stylesheet" href="/harness.css"></head><body><div id="root"></div><script type="module">import { mountPanelRealNodeHarness } from "/real.js"; window.mountPanelRealNodeHarness = mountPanelRealNodeHarness;</script></body></html>', { headers: { "Content-Type": "text/html" } });
             return new Response('<!doctype html><html><head><link rel="stylesheet" href="/harness.css"></head><body><div id="root"></div><script type="module">import { mountNodePanelHarness } from "/harness.js"; window.mountPanelHarness = mountNodePanelHarness;</script></body></html>', { headers: { "Content-Type": "text/html" } });
         },
     });
     browser = await chromium.launch({ headless: true });
     page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+    // The geometry transition is intentionally disabled under reduced motion.
+    await page.emulateMedia({ reducedMotion: "no-preference" });
     page.on("pageerror", (error) => console.error(error.message));
     await page.route("**/*", (route) => new URL(route.request().url()).origin === server.url.origin ? route.continue() : route.abort());
 }, 90_000);
@@ -69,18 +79,17 @@ type FrameSample = {
 
 /**
  * Samples real animation frames (rAF callbacks, i.e. the values the browser
- * paints). `action` runs inside the callback of its frame, so paints from both
- * sides of a geometry change are captured instead of only the settled state.
+ * paints). Mounts run before that frame's sample; geometry changes run in a
+ * follow-up task so the forced layout used for sampling cannot resolve the new
+ * values before the transition starts.
  */
 async function recordFrames(frameCount: number, action?: FrameAction) {
     return page.evaluate(({ frameCount, action }) => new Promise<FrameSample[]>((resolve) => {
         const samples: FrameSample[] = [];
         let frame = 0;
         const record = () => {
-            if (action && action.atFrame === frame) {
-                const api = (window as unknown as { panelHarness?: Record<string, unknown>; mountPanelHarness?: (host: HTMLElement, options: unknown) => void });
-                if (action.kind === "mount") api.mountPanelHarness?.(document.getElementById("root") as HTMLElement, action.options);
-                else (api.panelHarness?.patchNode as ((patch: { size: string }) => void) | undefined)?.({ size: action.size });
+            if (action && action.atFrame === frame && action.kind === "mount") {
+                (window as unknown as { mountPanelHarness?: (host: HTMLElement, options: unknown) => void }).mountPanelHarness?.(document.getElementById("root") as HTMLElement, action.options);
             }
             const panel = document.querySelector<HTMLElement>("[data-canvas-node-panel]");
             const node = document.querySelector<HTMLElement>('[data-testid="canvas-node"]');
@@ -103,6 +112,14 @@ async function recordFrames(frameCount: number, action?: FrameAction) {
                     node: { ...box(node), transitionDuration: getComputedStyle(node).transitionDuration, animations: node.getAnimations().length },
                 }
                 : { frame, hasPanel: false });
+            // Apply geometry changes in a separate task, after this frame's
+            // measurement. Reading layout right after the style mutation would
+            // make the browser resolve the new values before the transition
+            // starts, hiding the very frames this test wants to observe.
+            if (action && action.atFrame === frame && action.kind === "patch-ratio") {
+                const api = (window as unknown as { panelHarness?: { patchNode?: (patch: { size: string }) => void } }).panelHarness;
+                setTimeout(() => api?.patchNode?.({ size: action.size }), 0);
+            }
             frame += 1;
             if (frame >= frameCount) resolve(samples);
             else requestAnimationFrame(record);
@@ -122,6 +139,8 @@ async function mountHarness(options: HarnessOptions = {}) {
     // Same as a canvas click: the viewport mounts first, the panel follows in a
     // later commit, then measures the committed node element.
     await page.waitForSelector("[data-canvas-node-panel]");
+    await settle();
+    // Let the first-paint transition enablement and any layout settle land.
     await settle();
 }
 
@@ -415,5 +434,78 @@ describe("canvas node panel linkage", () => {
         expect(resized.panel.left).toBeGreaterThanOrEqual(resized.container.left + 16 - 0.5);
         expect(resized.panel.right).toBeLessThanOrEqual(resized.container.right - 8 + 0.5);
         expect(resized.panel.width).toBeCloseTo(resized.container.clientWidth - 24, 0);
+    });
+
+    test("real CanvasNode resize handle disables transitions on both surfaces", async () => {
+        await page.goto(server.url.toString() + "real", { waitUntil: "domcontentloaded" });
+        await page.waitForFunction(() => Boolean((window as unknown as { mountPanelRealNodeHarness?: unknown }).mountPanelRealNodeHarness));
+        await page.evaluate(() => (window as unknown as { mountPanelRealNodeHarness: (host: HTMLElement) => void }).mountPanelRealNodeHarness(document.getElementById("root") as HTMLElement));
+        await page.waitForSelector("[data-canvas-node-panel]");
+        await settle();
+
+        const handle = await page.evaluate(() => {
+            const node = document.querySelector<HTMLElement>('[data-node-id="resize-node"]');
+            if (!node) return null;
+            const candidates = [...node.querySelectorAll<HTMLElement>('[class*="cursor-nwse-resize"]')]
+                .map((element) => {
+                    const rect = element.getBoundingClientRect();
+                    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, size: rect.width };
+                })
+                .sort((a, b) => (b.x + b.y) - (a.x + a.y));
+            return candidates[0] ?? null;
+        });
+        expect(handle).not.toBeNull();
+        expect(handle!.size).toBeGreaterThan(0);
+
+        await page.mouse.move(handle!.x, handle!.y);
+        await page.mouse.down();
+        await page.mouse.move(handle!.x + 60, handle!.y + 45, { steps: 4 });
+        await settle();
+        const during = await page.evaluate(() => {
+            const panel = document.querySelector<HTMLElement>("[data-canvas-node-panel]")!;
+            const node = document.querySelector<HTMLElement>('[data-node-id="resize-node"]')!;
+            const container = document.querySelector<HTMLElement>('[data-testid="canvas-container"]')!;
+            const panelRect = panel.getBoundingClientRect();
+            const nodeRect = node.getBoundingClientRect();
+            return {
+                resizing: container.dataset.canvasNodeResizing,
+                panelTransition: getComputedStyle(panel).transitionDuration,
+                nodeTransition: getComputedStyle(node).transitionDuration,
+                panelAnimations: panel.getAnimations().length,
+                nodeAnimations: node.getAnimations().length,
+                panel: { left: panelRect.left, top: panelRect.top, width: panelRect.width },
+                node: { left: nodeRect.left, bottom: nodeRect.bottom, width: nodeRect.width },
+            };
+        });
+        expect(during.resizing).toBe("true");
+        expect(during.panelTransition).toBe("0s");
+        expect(during.nodeTransition).toBe("0s");
+        expect(during.panelAnimations).toBe(0);
+        expect(during.nodeAnimations).toBe(0);
+        // The node grew from its bottom-right handle; the panel already follows.
+        expect(during.node.width).toBeGreaterThan(480);
+        expect(Math.abs(during.panel.top - (during.node.bottom + 16))).toBeLessThan(1.5);
+        expect(Math.abs(during.panel.left + during.panel.width / 2 - (during.node.left + during.node.width / 2))).toBeLessThan(1.5);
+
+        await page.mouse.up();
+        await settle();
+        await settle();
+        const after = await page.evaluate(() => {
+            const panel = document.querySelector<HTMLElement>("[data-canvas-node-panel]")!;
+            const node = document.querySelector<HTMLElement>('[data-node-id="resize-node"]')!;
+            const container = document.querySelector<HTMLElement>('[data-testid="canvas-container"]')!;
+            return {
+                resizing: container.dataset.canvasNodeResizing === "true",
+                panelTransition: getComputedStyle(panel).transitionDuration,
+                nodeTransition: getComputedStyle(node).transitionDuration,
+                panelAnimations: panel.getAnimations().length,
+                nodeAnimations: node.getAnimations().length,
+            };
+        });
+        expect(after.resizing).toBe(false);
+        expect(after.panelTransition).toBe("0.34s, 0.34s");
+        expect(after.nodeTransition).toBe("0.34s, 0.34s, 0.34s");
+        expect(after.panelAnimations).toBe(0);
+        expect(after.nodeAnimations).toBe(0);
     });
 });
