@@ -116,6 +116,7 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
         let liveViewport = viewport;
         let liveDragOffset = dragOffsetRef.current;
         let viewportSize = { width: container.clientWidth, height: container.clientHeight };
+        let disposed = false;
         let transitionEnabled: boolean | undefined;
         let suppressTransition = false;
         const isInteracting = () => container.dataset.canvasNodeDragging === "true"
@@ -166,7 +167,7 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
             suppressTransition = true;
             update(liveViewport);
             requestAnimationFrame(() => requestAnimationFrame(() => {
-                if (!panel.isConnected) return;
+                if (disposed || !panel.isConnected) return;
                 suppressTransition = false;
                 update(liveViewport);
             }));
@@ -182,6 +183,7 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
         const attributeObserver = new MutationObserver(() => update(liveViewport));
         attributeObserver.observe(container, { attributes: true, attributeFilter: ["data-canvas-node-dragging", "data-canvas-viewport-interacting", "data-canvas-node-resizing"] });
         return () => {
+            disposed = true;
             if (enableFrame !== null) cancelAnimationFrame(enableFrame);
             attributeObserver.disconnect();
             resizeObserver.disconnect();
