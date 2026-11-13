@@ -20,7 +20,7 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
     const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(readWorkspaceSidebarCollapsed);
     const [sidebarHoverPreview, setSidebarHoverPreview] = useState(false);
     const [sidebarClosing, setSidebarClosing] = useState(false);
-    const sidebarHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const sidebarCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [paletteOpen, setPaletteOpen] = useState(false);
     const sessionHydrated = useUserStore((state) => state.hydrated);
     const storageMode = useUserStore((state) => state.storageMode);
@@ -61,21 +61,20 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
     };
 
     // 悬停预览只存在于真正的折叠态，不改写用户手动固定的展开偏好。
-    // 展开时浮在内容上方，避免首页和画布随手势反复重排。
+    // DOM 结构保持稳定，展开与收回由同一条 transform 过渡负责。
     const previewSidebar = () => {
         if (isMobileViewport() || !desktopSidebarCollapsed) return;
-        if (sidebarHoverTimer.current) clearTimeout(sidebarHoverTimer.current);
+        if (sidebarCloseTimer.current) clearTimeout(sidebarCloseTimer.current);
         setSidebarClosing(false);
         setSidebarHoverPreview(true);
     };
-    const scheduleSidebarClose = () => {
+    const closeSidebarPreview = () => {
         if (!sidebarHoverPreview) return;
-        if (sidebarHoverTimer.current) clearTimeout(sidebarHoverTimer.current);
         setSidebarClosing(true);
-        sidebarHoverTimer.current = setTimeout(() => {
+        sidebarCloseTimer.current = setTimeout(() => {
             setSidebarHoverPreview(false);
             setSidebarClosing(false);
-        }, 280);
+        }, 180);
     };
     useEffect(() => {
         if (!desktopSidebarCollapsed) {
@@ -84,7 +83,7 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
         }
     }, [desktopSidebarCollapsed]);
     useEffect(() => () => {
-        if (sidebarHoverTimer.current) clearTimeout(sidebarHoverTimer.current);
+        if (sidebarCloseTimer.current) clearTimeout(sidebarCloseTimer.current);
     }, []);
 
     // ⌘K / Ctrl+K 全局呼出搜索面板。
@@ -120,25 +119,28 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
                         <div
                             className={cn("app-workspace-sidebar-slot relative h-full shrink-0", desktopSidebarCollapsed && "is-collapsed")}
                             onPointerEnter={previewSidebar}
-                            onPointerLeave={scheduleSidebarClose}
+                            onPointerLeave={closeSidebarPreview}
                         >
-                            <aside
-                                className={cn(
-                                    "app-workspace-sidebar flex h-full shrink-0 flex-col overflow-hidden",
-                                    mobileSidebarExpanded && "is-mobile-expanded",
-                                    desktopSidebarCollapsed && !sidebarHoverPreview && "is-collapsed",
-                                    sidebarHoverPreview && desktopSidebarCollapsed && !sidebarClosing && "is-hover-preview",
-                                    sidebarClosing && "is-hover-closing",
-                                )}
-                            >
+                            <aside className={cn("app-workspace-sidebar flex h-full shrink-0 flex-col overflow-hidden", desktopSidebarCollapsed && "is-collapsed")}>
                                 <WorkspaceSidebarNav
-                                    collapsed={desktopSidebarCollapsed && !sidebarHoverPreview}
+                                    collapsed={desktopSidebarCollapsed}
                                     onNavigate={handleNavClick}
                                     onOpenSearch={() => setPaletteOpen(true)}
                                     onExpand={expandDesktopSidebar}
                                     onCollapse={collapseDesktopSidebar}
                                 />
                             </aside>
+                            {sidebarHoverPreview && desktopSidebarCollapsed ? (
+                                <div className={cn("app-workspace-sidebar-hover-layer", sidebarClosing && "is-closing")} role="presentation">
+                                    <WorkspaceSidebarNav
+                                        collapsed={false}
+                                        onNavigate={handleNavClick}
+                                        onOpenSearch={() => setPaletteOpen(true)}
+                                        onExpand={expandDesktopSidebar}
+                                        onCollapse={collapseDesktopSidebar}
+                                    />
+                                </div>
+                            ) : null}
                         </div>
                     ) : null}
 
