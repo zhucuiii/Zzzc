@@ -1762,6 +1762,15 @@
         box-shadow: none;
     }
 
+    .app-workspace-sidebar-slot {
+        width: var(--workspace-sidebar-width, 208px);
+        transition: width 280ms var(--ease-aceternity);
+    }
+
+    .app-workspace-sidebar-slot.is-collapsed {
+        width: var(--workspace-sidebar-collapsed-width);
+    }
+
     .app-workspace-sidebar {
         width: var(--workspace-sidebar-width, 208px);
         background: color-mix(in srgb, var(--workspace-sidebar) 96%, var(--foreground) 4%);
@@ -1772,15 +1781,23 @@
         width: var(--workspace-sidebar-collapsed-width) !important;
     }
 
-    /* 折叠后的悬停预览浮于内容上方，宽度、阴影与文字显现共用一段柔和节奏。 */
+    /* 图标轨保持在原位；完整菜单从它上方平滑展开，不再瞬间替换位置。 */
     @media (min-width: 1024px) {
-        .app-workspace-shell .app-workspace-sidebar.is-collapsed.is-hover-preview {
+        .app-workspace-shell .app-workspace-sidebar.is-hover-preview,
+        .app-workspace-shell .app-workspace-sidebar.is-hover-closing {
             position: absolute;
             z-index: 42;
             inset: 0 auto 0 0;
             width: var(--workspace-sidebar-width, 208px) !important;
+            flex-basis: var(--workspace-sidebar-width, 208px) !important;
             background: var(--workspace-sidebar);
             box-shadow: 18px 0 48px color-mix(in srgb, var(--foreground) 14%, transparent);
+            animation: workspace-sidebar-preview-in 280ms var(--ease-aceternity) both;
+        }
+
+        .app-workspace-shell .app-workspace-sidebar.is-hover-closing {
+            pointer-events: none;
+            animation-name: workspace-sidebar-preview-out;
         }
 
         .app-workspace-sidebar.is-collapsed:not(.is-hover-preview) :where(.app-workspace-sidebar-brand-row, .app-workspace-nav-title, .app-workspace-nav-meta, .app-workspace-sidebar-account, .app-workspace-update-version) {
@@ -1793,6 +1810,20 @@
             opacity: 1;
             transition: opacity 160ms ease-out 90ms;
         }
+
+        .app-workspace-sidebar.is-hover-closing :where(.app-workspace-sidebar-brand-row, .app-workspace-nav-title, .app-workspace-nav-meta) {
+            transition: opacity 100ms ease-out;
+        }
+    }
+
+    @keyframes workspace-sidebar-preview-in {
+        from { clip-path: inset(0 calc(100% - var(--workspace-sidebar-collapsed-width)) 0 0); opacity: .86; }
+        to { clip-path: inset(0 0 0 0); opacity: 1; }
+    }
+
+    @keyframes workspace-sidebar-preview-out {
+        from { clip-path: inset(0 0 0 0); opacity: 1; }
+        to { clip-path: inset(0 calc(100% - var(--workspace-sidebar-collapsed-width)) 0 0); opacity: .86; }
     }
 
     @media (prefers-reduced-motion: reduce) {

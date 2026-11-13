@@ -19,6 +19,7 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
     const [mobileSidebarExpanded, setMobileSidebarExpanded] = useState(false);
     const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(readWorkspaceSidebarCollapsed);
     const [sidebarHoverPreview, setSidebarHoverPreview] = useState(false);
+    const [sidebarClosing, setSidebarClosing] = useState(false);
     const sidebarHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [paletteOpen, setPaletteOpen] = useState(false);
     const sessionHydrated = useUserStore((state) => state.hydrated);
@@ -64,14 +65,23 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
     const previewSidebar = () => {
         if (isMobileViewport() || !desktopSidebarCollapsed) return;
         if (sidebarHoverTimer.current) clearTimeout(sidebarHoverTimer.current);
+        setSidebarClosing(false);
         setSidebarHoverPreview(true);
     };
     const scheduleSidebarClose = () => {
+        if (!sidebarHoverPreview) return;
         if (sidebarHoverTimer.current) clearTimeout(sidebarHoverTimer.current);
-        sidebarHoverTimer.current = setTimeout(() => setSidebarHoverPreview(false), 120);
+        setSidebarClosing(true);
+        sidebarHoverTimer.current = setTimeout(() => {
+            setSidebarHoverPreview(false);
+            setSidebarClosing(false);
+        }, 280);
     };
     useEffect(() => {
-        if (!desktopSidebarCollapsed) setSidebarHoverPreview(false);
+        if (!desktopSidebarCollapsed) {
+            setSidebarHoverPreview(false);
+            setSidebarClosing(false);
+        }
     }, [desktopSidebarCollapsed]);
     useEffect(() => () => {
         if (sidebarHoverTimer.current) clearTimeout(sidebarHoverTimer.current);
@@ -107,24 +117,29 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
 
                 <div className="app-workspace-main-row flex min-h-0 min-w-0 flex-1 overflow-hidden">
                     {!hideChrome ? (
-                        <aside
-                            className={cn(
-                                "app-workspace-sidebar flex h-full shrink-0 flex-col overflow-hidden",
-                                mobileSidebarExpanded && "is-mobile-expanded",
-                                desktopSidebarCollapsed && !sidebarHoverPreview && "is-collapsed",
-                                sidebarHoverPreview && desktopSidebarCollapsed && "is-hover-preview",
-                            )}
+                        <div
+                            className={cn("app-workspace-sidebar-slot relative h-full shrink-0", desktopSidebarCollapsed && "is-collapsed")}
                             onPointerEnter={previewSidebar}
                             onPointerLeave={scheduleSidebarClose}
                         >
-                            <WorkspaceSidebarNav
-                                collapsed={desktopSidebarCollapsed && !sidebarHoverPreview}
-                                onNavigate={handleNavClick}
-                                onOpenSearch={() => setPaletteOpen(true)}
-                                onExpand={expandDesktopSidebar}
-                                onCollapse={collapseDesktopSidebar}
-                            />
-                        </aside>
+                            <aside
+                                className={cn(
+                                    "app-workspace-sidebar flex h-full shrink-0 flex-col overflow-hidden",
+                                    mobileSidebarExpanded && "is-mobile-expanded",
+                                    desktopSidebarCollapsed && !sidebarHoverPreview && "is-collapsed",
+                                    sidebarHoverPreview && desktopSidebarCollapsed && !sidebarClosing && "is-hover-preview",
+                                    sidebarClosing && "is-hover-closing",
+                                )}
+                            >
+                                <WorkspaceSidebarNav
+                                    collapsed={desktopSidebarCollapsed && !sidebarHoverPreview}
+                                    onNavigate={handleNavClick}
+                                    onOpenSearch={() => setPaletteOpen(true)}
+                                    onExpand={expandDesktopSidebar}
+                                    onCollapse={collapseDesktopSidebar}
+                                />
+                            </aside>
+                        </div>
                     ) : null}
 
                     <div className="app-workspace-stage relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
