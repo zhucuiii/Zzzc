@@ -111,7 +111,7 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
                             className={cn(
                                 "app-workspace-sidebar flex h-full shrink-0 flex-col overflow-hidden",
                                 mobileSidebarExpanded && "is-mobile-expanded",
-                                desktopSidebarCollapsed && "is-collapsed",
+                                desktopSidebarCollapsed && !sidebarHoverPreview && "is-collapsed",
                                 sidebarHoverPreview && desktopSidebarCollapsed && "is-hover-preview",
                             )}
                             onPointerEnter={previewSidebar}
