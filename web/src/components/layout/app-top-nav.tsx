@@ -120,6 +120,7 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
                             className={cn("app-workspace-sidebar-slot relative h-full shrink-0", desktopSidebarCollapsed && "is-collapsed")}
                             onPointerEnter={previewSidebar}
                             onPointerLeave={closeSidebarPreview}
+                            onPointerOver={previewSidebar}
                         >
                             <aside className={cn("app-workspace-sidebar flex h-full shrink-0 flex-col overflow-hidden", desktopSidebarCollapsed && "is-collapsed")}>
                                 <WorkspaceSidebarNav
@@ -134,6 +135,7 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
                                 <div className={cn("app-workspace-sidebar-hover-layer", sidebarClosing && "is-closing")} role="presentation">
                                     <WorkspaceSidebarNav
                                         collapsed={false}
+                                        hoverPreview
                                         onNavigate={handleNavClick}
                                         onOpenSearch={() => setPaletteOpen(true)}
                                         onExpand={expandDesktopSidebar}
