@@ -1765,11 +1765,42 @@
     .app-workspace-sidebar {
         width: var(--workspace-sidebar-width, 208px);
         background: color-mix(in srgb, var(--workspace-sidebar) 96%, var(--foreground) 4%);
-        transition: width var(--motion-state) var(--ease-aceternity);
+        transition: width 280ms var(--ease-aceternity);
     }
 
     .app-workspace-shell .app-workspace-sidebar.is-collapsed {
         width: var(--workspace-sidebar-collapsed-width) !important;
+    }
+
+    /* 折叠后的悬停预览浮于内容上方，宽度、阴影与文字显现共用一段柔和节奏。 */
+    @media (min-width: 1024px) {
+        .app-workspace-shell .app-workspace-sidebar.is-collapsed.is-hover-preview {
+            position: absolute;
+            z-index: 42;
+            inset: 0 auto 0 0;
+            width: var(--workspace-sidebar-width, 208px) !important;
+            background: var(--workspace-sidebar);
+            box-shadow: 18px 0 48px color-mix(in srgb, var(--foreground) 14%, transparent);
+        }
+
+        .app-workspace-sidebar.is-collapsed:not(.is-hover-preview) :where(.app-workspace-sidebar-brand-row, .app-workspace-nav-title, .app-workspace-nav-meta, .app-workspace-sidebar-account, .app-workspace-update-version) {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 100ms ease-out;
+        }
+
+        .app-workspace-sidebar.is-hover-preview :where(.app-workspace-sidebar-brand-row, .app-workspace-nav-title, .app-workspace-nav-meta, .app-workspace-sidebar-account, .app-workspace-update-version) {
+            opacity: 1;
+            transition: opacity 160ms ease-out 90ms;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .app-workspace-sidebar,
+        .app-workspace-sidebar-nav,
+        .app-workspace-sidebar :where(.app-workspace-sidebar-brand-row, .app-workspace-nav-title, .app-workspace-nav-meta) {
+            transition: none !important;
+        }
     }
 
     .app-workspace-sidebar-nav {

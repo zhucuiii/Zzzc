@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { PanelLeftOpen } from "lucide-react";
 
@@ -18,6 +18,8 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
     const navigate = useNavigate();
     const [mobileSidebarExpanded, setMobileSidebarExpanded] = useState(false);
     const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(readWorkspaceSidebarCollapsed);
+    const [sidebarHoverPreview, setSidebarHoverPreview] = useState(false);
+    const sidebarHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [paletteOpen, setPaletteOpen] = useState(false);
     const sessionHydrated = useUserStore((state) => state.hydrated);
     const storageMode = useUserStore((state) => state.storageMode);
@@ -57,6 +59,24 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
         if (isMobileViewport()) setMobileSidebarExpanded(false);
     };
 
+    // 悬停预览只存在于真正的折叠态，不改写用户手动固定的展开偏好。
+    // 展开时浮在内容上方，避免首页和画布随手势反复重排。
+    const previewSidebar = () => {
+        if (isMobileViewport() || !desktopSidebarCollapsed) return;
+        if (sidebarHoverTimer.current) clearTimeout(sidebarHoverTimer.current);
+        setSidebarHoverPreview(true);
+    };
+    const scheduleSidebarClose = () => {
+        if (sidebarHoverTimer.current) clearTimeout(sidebarHoverTimer.current);
+        sidebarHoverTimer.current = setTimeout(() => setSidebarHoverPreview(false), 120);
+    };
+    useEffect(() => {
+        if (!desktopSidebarCollapsed) setSidebarHoverPreview(false);
+    }, [desktopSidebarCollapsed]);
+    useEffect(() => () => {
+        if (sidebarHoverTimer.current) clearTimeout(sidebarHoverTimer.current);
+    }, []);
+
     // ⌘K / Ctrl+K 全局呼出搜索面板。
     useEffect(() => {
         const handler = (event: KeyboardEvent) => {
@@ -92,7 +112,10 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
                                 "app-workspace-sidebar flex h-full shrink-0 flex-col overflow-hidden",
                                 mobileSidebarExpanded && "is-mobile-expanded",
                                 desktopSidebarCollapsed && "is-collapsed",
+                                sidebarHoverPreview && desktopSidebarCollapsed && "is-hover-preview",
                             )}
+                            onPointerEnter={previewSidebar}
+                            onPointerLeave={scheduleSidebarClose}
                         >
                             <WorkspaceSidebarNav
                                 collapsed={desktopSidebarCollapsed}
