@@ -17,9 +17,15 @@ const buildCommit = (() => {
     catch { return "unknown"; }
 })();
 const apiProxyTarget = process.env.VITE_API_PROXY_TARGET?.trim() || "http://127.0.0.1:8080";
-const desktopLaunchToken = process.env.VITE_DESKTOP_LAUNCH_TOKEN?.trim();
+const desktopLaunchToken = process.env.CANVAS_DEV_LAUNCH_TOKEN?.trim() || process.env.VITE_DESKTOP_LAUNCH_TOKEN?.trim();
+const uiBootstrapToken = process.env.CANVAS_DEV_UI_BOOTSTRAP_TOKEN?.trim();
+const devProxyToken = process.env.CANVAS_DEV_PROXY_TOKEN?.trim();
 const ownerToken = process.env.VITE_OWNER_TOKEN?.trim();
-const apiProxyHeaders = desktopLaunchToken ? { "X-Desktop-Token": desktopLaunchToken } : {};
+const apiProxyHeaders = {
+    ...(desktopLaunchToken ? { "X-Desktop-Token": desktopLaunchToken } : {}),
+    ...(uiBootstrapToken ? { "X-Beeftv-UI-Bootstrap": uiBootstrapToken } : {}),
+    ...(devProxyToken ? { "X-Beeftv-Dev-Proxy": devProxyToken } : {}),
+};
 const opsProxyHeaders = {
     ...apiProxyHeaders,
     ...(ownerToken ? { "X-Beeftv-Owner": ownerToken } : {}),

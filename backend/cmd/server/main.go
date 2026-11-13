@@ -43,18 +43,25 @@ func run(ctx context.Context) error {
 		return err
 	}
 	listenAddr := env("CANVAS_BACKEND_ADDR", bootstrap.DefaultServerListenAddr)
+	devProxyToken := strings.TrimSpace(os.Getenv("CANVAS_DEV_PROXY_TOKEN"))
 	runtime, err := bootstrap.Open(ctx, bootstrap.Config{
 		Profile:          bootstrap.ProfileServer,
 		DataDir:          dataDir,
 		DatabaseDriver:   env("CANVAS_DATABASE_DRIVER", "sqlite"),
 		DatabaseURL:      os.Getenv("DATABASE_URL"),
 		ListenAddr:       listenAddr,
+		LaunchToken:      strings.TrimSpace(os.Getenv("CANVAS_DEV_LAUNCH_TOKEN")),
+		UIBootstrapToken: strings.TrimSpace(os.Getenv("CANVAS_DEV_UI_BOOTSTRAP_TOKEN")),
+		DevProxyToken:    devProxyToken,
 		AutoMigrate:      autoMigrate,
 		ShutdownTimeout:  workerTimeout,
 		RouterMiddleware: []gin.HandlerFunc{corsMiddleware},
 	})
 	if err != nil {
 		return err
+	}
+	if devProxyToken != "" {
+		log.Printf("development proxy trust enabled; server defaults remain closed without CANVAS_DEV_PROXY_TOKEN")
 	}
 	if err := runtime.Start(); err != nil {
 		_ = runtime.Close(context.Background())

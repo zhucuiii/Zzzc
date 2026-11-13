@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"infinite-canvas/backend/internal/model"
 )
@@ -119,13 +120,14 @@ func (s *Store) Run(ctx context.Context, req RunRequest, fn func(tx *gorm.DB) ([
 			PayloadHash: req.PayloadHash, Status: "running", TurnID: strings.TrimSpace(req.TurnID),
 			CallerKind: strings.TrimSpace(req.CallerKind), ClientID: strings.TrimSpace(req.ClientID),
 			ClientLabel: strings.TrimSpace(req.ClientLabel)}
-		if err := tx.Create(&record).Error; err != nil {
-			if !isDuplicateKey(err) {
-				return AsError(err)
-			}
+		created, createErr := createOperationRecord(tx, record)
+		if createErr != nil {
+			return AsError(createErr)
+		}
+		if !created {
 			var existing model.AgentOpRecord
 			if findErr := tx.Where("user_id = ? AND op_id = ?", req.UserID, req.OpID).First(&existing).Error; findErr != nil {
-				return AsError(err)
+				return AsError(findErr)
 			}
 			if existing.Status != "succeeded" {
 				return Conflict("operation_in_progress",
@@ -183,13 +185,14 @@ func (s *Store) runOutOfTx(db *gorm.DB, req RunRequest, fn func(tx *gorm.DB) ([]
 			PayloadHash: req.PayloadHash, Status: "running", TurnID: strings.TrimSpace(req.TurnID),
 			CallerKind: strings.TrimSpace(req.CallerKind), ClientID: strings.TrimSpace(req.ClientID),
 			ClientLabel: strings.TrimSpace(req.ClientLabel)}
-		if err := tx.Create(&record).Error; err != nil {
-			if !isDuplicateKey(err) {
-				return AsError(err)
-			}
+		created, createErr := createOperationRecord(tx, record)
+		if createErr != nil {
+			return AsError(createErr)
+		}
+		if !created {
 			var existing model.AgentOpRecord
 			if findErr := tx.Where("user_id = ? AND op_id = ?", req.UserID, req.OpID).First(&existing).Error; findErr != nil {
-				return AsError(err)
+				return AsError(findErr)
 			}
 			if existing.Status != "succeeded" {
 				return Conflict("operation_in_progress",
@@ -256,19 +259,9 @@ func (s *Store) RunDomain(ctx context.Context, req RunRequest, binder DomainBind
 	})
 }
 
-func isDuplicateKey(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, gorm.ErrDuplicatedKey) {
-		return true
-	}
-	var coder interface{ Code() int }
-	if errors.As(err, &coder) {
-		switch coder.Code() {
-		case 1555, 2067:
-			return true
-		}
-	}
-	return strings.Contains(strings.ToUpper(err.Error()), "UNIQUE CONSTRAINT FAILED")
+// Replays are expected for idempotent operations. Avoid logging a duplicate-key
+// error before reading the existing receipt.
+func createOperationRecord(tx *gorm.DB, record model.AgentOpRecord) (bool, error) {
+	result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&record)
+	return result.RowsAffected > 0, result.Error
 }

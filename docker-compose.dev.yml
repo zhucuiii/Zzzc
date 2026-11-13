@@ -25,6 +25,11 @@ services:
       CANVAS_ALLOW_PRIVATE_UPSTREAMS: ${CANVAS_ALLOW_PRIVATE_UPSTREAMS:-true}
       CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS: ${CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS:-}
       CANVAS_CORS_ORIGINS: ${CANVAS_CORS_ORIGINS:-http://localhost:3000}
+      # Explicit opt-in for the local Vite proxy only. These are synthetic
+      # development credentials, never a user's real desktop or account secret.
+      CANVAS_DEV_PROXY_TOKEN: ${CANVAS_DEV_PROXY_TOKEN:-beeftv-compose-dev-proxy}
+      CANVAS_DEV_LAUNCH_TOKEN: ${CANVAS_DEV_LAUNCH_TOKEN:-beeftv-compose-dev-launch}
+      CANVAS_DEV_UI_BOOTSTRAP_TOKEN: ${CANVAS_DEV_UI_BOOTSTRAP_TOKEN:-beeftv-compose-dev-ui-bootstrap}
       GIN_MODE: debug
     volumes:
       - type: bind
@@ -57,6 +62,9 @@ services:
     command: ["sh", "-c", "bun install --frozen-lockfile && bun run dev"]
     environment:
       VITE_API_PROXY_TARGET: http://backend:8080
+      CANVAS_DEV_PROXY_TOKEN: ${CANVAS_DEV_PROXY_TOKEN:-beeftv-compose-dev-proxy}
+      CANVAS_DEV_LAUNCH_TOKEN: ${CANVAS_DEV_LAUNCH_TOKEN:-beeftv-compose-dev-launch}
+      CANVAS_DEV_UI_BOOTSTRAP_TOKEN: ${CANVAS_DEV_UI_BOOTSTRAP_TOKEN:-beeftv-compose-dev-ui-bootstrap}
     volumes:
       - type: bind
         source: .

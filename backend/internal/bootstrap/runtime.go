@@ -72,6 +72,10 @@ func Open(_ context.Context, raw Config) (result *Runtime, openErr error) {
 	if cfg.Profile == ProfileDesktop && !strings.HasPrefix(cfg.ListenAddr, "127.0.0.1:") {
 		return nil, errors.New("桌面运行时只能监听 127.0.0.1")
 	}
+	devProxyToken := strings.TrimSpace(cfg.DevProxyToken)
+	if devProxyToken != "" && cfg.Profile != ProfileServer {
+		return nil, errors.New("dev proxy trust is only available for the server profile")
+	}
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		return nil, err
 	}
@@ -209,6 +213,13 @@ func Open(_ context.Context, raw Config) (result *Runtime, openErr error) {
 				return nil, err
 			}
 		}
+	} else if devProxyToken != "" {
+		launchToken = strings.TrimSpace(cfg.LaunchToken)
+		uiBootstrapToken = strings.TrimSpace(cfg.UIBootstrapToken)
+		if launchToken == "" || uiBootstrapToken == "" {
+			cleanupService()
+			return nil, errors.New("dev proxy trust requires both launch and UI bootstrap tokens")
+		}
 	}
 
 	router := gin.New()
@@ -250,7 +261,7 @@ func Open(_ context.Context, raw Config) (result *Runtime, openErr error) {
 		Appearance:         svc.AppearanceDomain(),
 		Diagnostics:        svc.DiagnosticsDomain(),
 		Eagle:              eagle.New(),
-		DesktopTrust:       desktopTrust(launchToken, uiBootstrapToken),
+		DesktopTrust:       desktopTrust(launchToken, uiBootstrapToken, devProxyToken),
 	})
 	businessCatalog := canvasHandler.NewBusinessCatalog(router.Routes())
 	canvasHandler.RegisterBusinessDiscovery(api, businessCatalog, svc)
@@ -262,6 +273,9 @@ func Open(_ context.Context, raw Config) (result *Runtime, openErr error) {
 	protected := rootHandler
 	if launchToken != "" {
 		protected = httptransport.RequireLaunchToken(launchToken)(rootHandler)
+	}
+	if devProxyToken != "" {
+		protected = httptransport.RequireDevProxyToken(devProxyToken)(protected)
 	}
 	clients := agentops.NewClientRegistry(svc.DataDir())
 	rootHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -595,12 +609,15 @@ func isLoopbackRemote(remoteAddr string) bool {
 
 // desktopTrust 用桌面启动令牌判定请求是否来自受信任的桌面壳。
 // 令牌为空（服务端形态）时返回 nil，表示没有这条信任路径。
-func desktopTrust(launchToken, uiToken string) func(*http.Request) bool {
+func desktopTrust(launchToken, uiToken, devProxyToken string) func(*http.Request) bool {
 	want := []byte(strings.TrimSpace(launchToken))
 	if len(want) == 0 {
 		return nil
 	}
 	return func(r *http.Request) bool {
+		if strings.TrimSpace(devProxyToken) != "" && !httptransport.DevProxyAuthenticated(r) {
+			return false
+		}
 		got := []byte(r.Header.Get(httptransport.LaunchTokenHeader))
 		ui := []byte(r.Header.Get("X-Beeftv-UI-Bootstrap"))
 		return len(got) == len(want) && subtle.ConstantTimeCompare(got, want) == 1 && len(uiToken) > 0 && subtle.ConstantTimeCompare(ui, []byte(uiToken)) == 1

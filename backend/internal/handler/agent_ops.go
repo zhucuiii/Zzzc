@@ -421,6 +421,9 @@ func isLoopbackHost(host string) bool {
 // isLoopbackRequest 精确校验来源：Host、Origin 与 RemoteAddr 都必须是本机。
 // 不用子串匹配，避免 localhost.attacker.example 或任意 loopback 端口被误当成同源。
 func isLoopbackRequest(r *http.Request) bool {
+	if httptransport.DevProxyAuthenticated(r) {
+		return true
+	}
 	if !isLoopbackHost(r.Host) {
 		return false
 	}

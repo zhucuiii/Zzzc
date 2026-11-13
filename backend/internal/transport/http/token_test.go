@@ -74,3 +74,35 @@ func TestNewLaunchTokenReturnsIndependent256BitTokens(t *testing.T) {
 		t.Fatalf("tokens must be distinct 32-byte hex values: %q %q", first, second)
 	}
 }
+
+func TestRequireDevProxyTokenIsExplicitAndLoopbackScoped(t *testing.T) {
+	protected := RequireDevProxyToken("dev-proxy")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !DevProxyAuthenticated(r) {
+			t.Fatal("trusted proxy request was not marked")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	for _, tc := range []struct {
+		name, token string
+		status      int
+	}{
+		{name: "missing", status: http.StatusForbidden},
+		{name: "incorrect", token: "wrong", status: http.StatusForbidden},
+		{name: "correct", token: "dev-proxy", status: http.StatusNoContent},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/api/ops/canvas.document.commit", nil)
+			if tc.token != "" {
+				request.Header.Set(DevProxyTokenHeader, tc.token)
+			}
+			response := httptest.NewRecorder()
+			protected.ServeHTTP(response, request)
+			if response.Code != tc.status {
+				t.Fatalf("status = %d, want %d", response.Code, tc.status)
+			}
+			if tc.status == http.StatusForbidden && !strings.Contains(response.Body.String(), `"reason":"dev_proxy_token_required"`) {
+				t.Fatalf("body = %q", response.Body.String())
+			}
+		})
+	}
+}

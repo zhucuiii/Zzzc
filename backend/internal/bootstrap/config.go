@@ -24,6 +24,8 @@ type Config struct {
 	DatabaseURL      string
 	ListenAddr       string
 	LaunchToken      string
+	UIBootstrapToken string
+	DevProxyToken    string
 	AutoMigrate      bool
 	ShutdownTimeout  time.Duration
 	RouterMiddleware []gin.HandlerFunc
