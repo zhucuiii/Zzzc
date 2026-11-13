@@ -118,7 +118,7 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
                             onPointerLeave={scheduleSidebarClose}
                         >
                             <WorkspaceSidebarNav
-                                collapsed={desktopSidebarCollapsed}
+                                collapsed={desktopSidebarCollapsed && !sidebarHoverPreview}
                                 onNavigate={handleNavClick}
                                 onOpenSearch={() => setPaletteOpen(true)}
                                 onExpand={expandDesktopSidebar}
