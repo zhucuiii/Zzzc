@@ -15,6 +15,17 @@ import (
 	"gorm.io/gorm"
 )
 
+// closeTestDB releases the SQLite handle before t.TempDir cleanup runs. An
+// open handle makes the directory removal fail on Windows.
+func closeTestDB(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+}
+
 func TestRegisterCanvasAPIExposesOpenAPIAndProjects(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

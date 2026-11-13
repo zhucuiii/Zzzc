@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -49,6 +50,9 @@ func (h *e2eGenerationHarness) confirmState() (bool, bool) {
 // 再查询任务。最终报告要么列出新建任务并有取消尝试，要么明确标记确认结果未知；
 // 不允许「后端有任务，报告却 pendingTasks 为空且未标记未知」。
 func TestE2EGenerationDriverSettlesWhileConfirmInFlight(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires the Unix harness control socket")
+	}
 	if testing.Short() {
 		t.Skip("spawns the real agent host")
 	}

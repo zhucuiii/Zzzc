@@ -28,6 +28,7 @@ func TestTimelineRenderPlanIsAuthenticatedAndSideEffectFree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	closeTestDB(t, db)
 	if err := database.MigrateLocalSchema(db); err != nil {
 		t.Fatal(err)
 	}

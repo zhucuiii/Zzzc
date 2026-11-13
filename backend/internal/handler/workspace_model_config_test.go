@@ -17,7 +17,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestWorkspaceModelConfigReturnsBuiltinBeefTVAndPersistenceMetadata(t *testing.T) {
+func TestWorkspaceModelConfigWithoutBuiltinChannelKeepsPersistenceMetadata(t *testing.T) {
 	router, _ := newModelConfigTestRouter(t)
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/workspace/model-config", nil))
@@ -30,11 +30,8 @@ func TestWorkspaceModelConfigReturnsBuiltinBeefTVAndPersistenceMetadata(t *testi
 	}
 	config, _ := data["config"].(map[string]any)
 	channels, _ := config["channels"].([]any)
-	if len(channels) != 1 || channels[0].(map[string]any)["id"] != "beeftv" {
-		t.Fatalf("builtin BeefTV missing: %#v", channels)
-	}
-	if models, _ := channels[0].(map[string]any)["models"].([]any); len(models) != 0 {
-		t.Fatalf("model catalog must remain dynamic: %#v", models)
+	if len(channels) != 0 {
+		t.Fatalf("removed official channel must not be injected: %#v", channels)
 	}
 }
 

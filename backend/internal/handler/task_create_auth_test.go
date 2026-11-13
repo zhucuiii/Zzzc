@@ -28,6 +28,7 @@ func TestRegisteredClientCannotCreatePaidTasksWithDesktopHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	closeTestDB(t, db)
 	if err = database.MigrateLocalSchema(db); err != nil {
 		t.Fatal(err)
 	}
@@ -152,6 +153,7 @@ func TestHostedTaskCreateStillAllowsWorkspaceOwnerWithoutDesktopTrust(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
+	closeTestDB(t, db)
 	if err = database.MigrateLocalSchema(db); err != nil {
 		t.Fatal(err)
 	}
@@ -181,6 +183,7 @@ func TestRegisteredClientCannotRetryPaidTasksWithDesktopHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	closeTestDB(t, db)
 	if err = database.MigrateLocalSchema(db); err != nil {
 		t.Fatal(err)
 	}
@@ -259,6 +262,7 @@ func TestHostedTaskRetryStillAllowsWorkspaceOwnerWithoutDesktopTrust(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	closeTestDB(t, db)
 	if err = database.MigrateLocalSchema(db); err != nil {
 		t.Fatal(err)
 	}

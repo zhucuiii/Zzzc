@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -39,6 +40,9 @@ func (h *e2eGenerationHarness) videoTaskState() (int, int) {
 
 // SIGINT 必须走与正常退出相同的收尾：查询、取消未结束任务、再查询、写报告。
 func TestE2EGenerationDriverSettlesOnInterrupt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires the Unix harness control socket")
+	}
 	if testing.Short() {
 		t.Skip("spawns the real agent host")
 	}

@@ -126,6 +126,7 @@ func textReplayRouter(t *testing.T) (*gin.Engine, *app.Service, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	closeTestDB(t, db)
 	if err := database.MigrateLocalSchema(db); err != nil {
 		t.Fatal(err)
 	}
