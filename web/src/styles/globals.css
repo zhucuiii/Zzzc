@@ -1781,41 +1781,56 @@
         width: var(--workspace-sidebar-collapsed-width) !important;
     }
 
-    /* 图标轨与完整菜单分离。浮层只在桌面折叠态出现，位置和宽度固定，
-       仅由 transform 与透明度驱动，不触发侧栏或主内容重排。 */
+    /* 图标轨与完整菜单分离。浮层在折叠态常驻 DOM（单实例），位置与宽度固定，
+       展开收回都只走 clip-path + 透明度过渡：合成器动画，零布局重排。
+       语义状态用 data-state 表达，closed 时内容整体截掉且不参与命中测试。
+       宽度用真实侧栏同款变量（reference-sidebar），保证图钉固定时不跳变。 */
     @media (min-width: 1024px) {
         .app-workspace-sidebar-hover-layer {
             position: absolute;
             z-index: 42;
             inset: 0 auto 0 0;
-            width: var(--workspace-sidebar-width, 208px);
+            width: var(--workspace-reference-sidebar, var(--workspace-sidebar-width, 208px));
             height: 100%;
             overflow: hidden;
             background: var(--workspace-sidebar);
-            box-shadow: 18px 0 48px color-mix(in srgb, var(--foreground) 14%, transparent);
-            animation: workspace-sidebar-hover-in 240ms var(--ease-aceternity) both;
-            will-change: transform, opacity;
-        }
-
-        .app-workspace-sidebar-hover-layer.is-closing {
+            clip-path: inset(0 100% 0 0 round var(--r-xl, 0px));
+            opacity: 0;
             pointer-events: none;
-            animation: workspace-sidebar-hover-out 180ms ease-in both;
+            transition:
+                clip-path 240ms var(--ease-aceternity),
+                opacity 240ms var(--ease-aceternity);
         }
-    }
 
-    @keyframes workspace-sidebar-hover-in {
-        from { transform: translateX(-28px); opacity: 0; }
-        to { transform: translateX(0); opacity: 1; }
-    }
+        /* 揭示锚点是图标轨右缘：菜单像从轨道后面横向铺开，而不是弹窗式飞入。 */
+        .app-workspace-sidebar-hover-layer[data-state="open"] {
+            clip-path: inset(0 0 0 0 round var(--r-xl, 0px));
+            opacity: 1;
+            pointer-events: auto;
+            box-shadow: 18px 0 48px color-mix(in srgb, var(--foreground) 14%, transparent);
+        }
 
-    @keyframes workspace-sidebar-hover-out {
-        from { transform: translateX(0); opacity: 1; }
-        to { transform: translateX(-20px); opacity: 0; }
+        /* 浮层内部内容只做一次轻微的随动位移，让展开有“推出”的方向感。 */
+        .app-workspace-sidebar-hover-layer > .app-workspace-sidebar-nav {
+            width: 100%;
+            transform: translateX(-8px);
+            opacity: 0.6;
+            transition:
+                transform 240ms var(--ease-aceternity),
+                opacity 240ms var(--ease-aceternity);
+        }
+
+        .app-workspace-sidebar-hover-layer[data-state="open"] > .app-workspace-sidebar-nav {
+            transform: translateX(0);
+            opacity: 1;
+        }
     }
 
     @media (prefers-reduced-motion: reduce) {
         .app-workspace-sidebar,
         .app-workspace-sidebar-nav,
+        .app-workspace-sidebar-hover-layer,
+        .app-workspace-sidebar-hover-layer > .app-workspace-sidebar-nav,
         .app-workspace-sidebar :where(.app-workspace-sidebar-brand-row, .app-workspace-nav-title, .app-workspace-nav-meta) {
             transition: none !important;
         }
