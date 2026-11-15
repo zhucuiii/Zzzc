@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Home, Plug, Plus, Settings2, HardDrive, Sun, Moon } from "lucide-react";
+import { ChevronLeft, ChevronRight, Home, Pin, Plug, Plus, Settings2, HardDrive, Sun, Moon } from "lucide-react";
 import { LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
@@ -69,7 +69,7 @@ function buildNav(features: FeatureAvailability): { groups: WorkspaceNavGroup[];
     return { groups, footer: [] };
 }
 
-function WorkspaceSwitcher({ collapsed, onNavigate, onExpand, onCollapse }: { collapsed: boolean; onNavigate: () => void; onExpand: () => void; onCollapse: () => void }) {
+function WorkspaceSwitcher({ collapsed, hoverPreview, onNavigate, onExpand, onCollapse }: { collapsed: boolean; hoverPreview: boolean; onNavigate: () => void; onExpand: () => void; onCollapse: () => void }) {
     const appearance = useAppearanceStore((state) => state.appearance);
 
     if (collapsed) {
@@ -92,14 +92,16 @@ function WorkspaceSwitcher({ collapsed, onNavigate, onExpand, onCollapse }: { co
                     </span>
                 </span>
             </Link>
+            {/* 悬停临时展开时按钮变成“固定展开”：点了把侧栏钉住（写偏好），
+                而不是收起——否则点下去侧栏缩回，等于白展开一次。 */}
             <button
                 type="button"
-                className="app-workspace-sidebar-collapse-button"
-                aria-label="收起侧栏"
-                title="收起侧栏"
-                onClick={onCollapse}
+                className={cn("app-workspace-sidebar-collapse-button", hoverPreview && "is-pin-action")}
+                aria-label={hoverPreview ? "固定展开侧栏" : "收起侧栏"}
+                title={hoverPreview ? "固定展开侧栏" : "收起侧栏"}
+                onClick={hoverPreview ? onExpand : onCollapse}
             >
-                <ChevronLeft className="size-4" strokeWidth={1.7} />
+                {hoverPreview ? <Pin className="size-4" strokeWidth={1.7} /> : <ChevronLeft className="size-4" strokeWidth={1.7} />}
             </button>
         </div>
     );
@@ -264,7 +266,7 @@ function NavGroup({ group, activeId, onNavigate, onOpenSearch, collapsed }: { gr
     );
 }
 
-export function WorkspaceSidebarNav({ collapsed, onNavigate, onOpenSearch, onExpand, onCollapse }: { collapsed: boolean; onNavigate: () => void; onOpenSearch: () => void; onExpand: () => void; onCollapse: () => void }) {
+export function WorkspaceSidebarNav({ collapsed, hoverPreview = false, onNavigate, onOpenSearch, onExpand, onCollapse }: { collapsed: boolean; hoverPreview?: boolean; onNavigate: () => void; onOpenSearch: () => void; onExpand: () => void; onCollapse: () => void }) {
     const theme = useThemeStore((state) => state.theme);
     const setTheme = useThemeStore((state) => state.setTheme);
     const { pathname } = useLocation();
@@ -315,7 +317,7 @@ export function WorkspaceSidebarNav({ collapsed, onNavigate, onOpenSearch, onExp
 
     return (
         <div className={cn("app-workspace-sidebar-nav flex h-full shrink-0 flex-col", collapsed && "is-collapsed")}>
-            <WorkspaceSwitcher collapsed={collapsed} onNavigate={onNavigate} onExpand={onExpand} onCollapse={onCollapse} />
+            <WorkspaceSwitcher collapsed={collapsed} hoverPreview={hoverPreview} onNavigate={onNavigate} onExpand={onExpand} onCollapse={onCollapse} />
 
             <LayoutGroup id="workspace-sidebar-nav">
             <div

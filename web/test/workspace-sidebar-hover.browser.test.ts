@@ -206,19 +206,99 @@ test("快速反复进出：最终回到折叠宽，无残留状态", async () =>
     }
 });
 
-test("点击收起按钮在悬停态可把侧栏真正固定收起", async () => {
+test("折叠态 footer 图标共用一条垂直中线", async () => {
+    const page = await newShellPage();
+    try {
+        await page.evaluate(() => (window as any).__sidebarHoverProbe.collapse());
+        await page.waitForTimeout(500);
+        // 鼠标移开，确保是纯折叠态而非悬停预览
+        await page.mouse.move(900, 500);
+        await page.waitForTimeout(400);
+
+        const result = await page.evaluate(() => {
+            const rail = document.querySelector(".app-workspace-sidebar")!;
+            const footer = rail.querySelector(".app-workspace-sidebar-footer")!;
+            const measure = (el: Element) => {
+                const box = el.getBoundingClientRect();
+                const icon = el.querySelector("svg")?.getBoundingClientRect();
+                return {
+                    boxCenter: Math.round(box.x + box.width / 2),
+                    iconCenter: icon ? Math.round(icon.x + icon.width / 2) : null,
+                };
+            };
+            const onboarding = footer.querySelector(".first-creation-entry");
+            const account = footer.querySelector(".app-workspace-official-account");
+            return {
+                onboarding: onboarding ? measure(onboarding) : null,
+                account: account ? measure(account) : null,
+            };
+        });
+        expect(result.onboarding).not.toBeNull();
+        expect(result.account).not.toBeNull();
+        // 新手引导入口在折叠轨里与账户入口共用同一条垂直中线（这是本次修复的回归点：
+        // 旧实现用 margin-left:-2px 对齐 58px 轨道，折叠宽 86px 时会偏 6px）。
+        expect(Math.abs(result.onboarding!.boxCenter - result.account!.boxCenter)).toBeLessThanOrEqual(1);
+        expect(Math.abs((result.onboarding!.iconCenter ?? 0) - (result.account!.iconCenter ?? 0))).toBeLessThanOrEqual(1);
+    } finally {
+        await page.close();
+    }
+});
+
+test("悬停展开时顶部按钮变成图钉，点击即固定展开", async () => {
+    const page = await newShellPage();
+    try {
+        await page.evaluate(() => (window as any).__sidebarHoverProbe.collapse());
+        await page.waitForTimeout(500);
+        await page.mouse.move(30, 450);
+        await page.waitForTimeout(500);
+
+        const hoverButton = await page.evaluate(() => {
+            const btn = document.querySelector(".app-workspace-sidebar-collapse-button");
+            return { label: btn?.getAttribute("aria-label"), pin: btn?.querySelector("svg")?.classList.contains("lucide-pin") };
+        });
+        expect(hoverButton.label).toBe("固定展开侧栏");
+        expect(hoverButton.pin).toBe(true);
+
+        // 点图钉 → 侧栏固定展开（写偏好 = 未折叠），鼠标移开也不收回
+        await page.evaluate(() => document.querySelector(".app-workspace-sidebar-collapse-button")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+        await page.mouse.move(900, 450);
+        await page.waitForTimeout(700);
+
+        const pinned = await page.evaluate(() => {
+            const btn = document.querySelector(".app-workspace-sidebar-collapse-button");
+            return {
+                railW: Math.round(document.querySelector(".app-workspace-sidebar")!.getBoundingClientRect().width),
+                persisted: localStorage.getItem("infinite-canvas:workspace-sidebar-collapsed"),
+                label: btn?.getAttribute("aria-label"),
+                hover: document.querySelector(".app-workspace-sidebar-slot")!.classList.contains("is-hover-preview"),
+            };
+        });
+        expect(pinned.railW).toBeGreaterThan(200);
+        expect(pinned.persisted).toBe("0");
+        expect(pinned.label).toBe("收起侧栏");
+        expect(pinned.hover).toBe(false);
+    } finally {
+        await page.close();
+    }
+});
+
+test("固定展开后再点顶部按钮可收起，并持续保持收起", async () => {
     const page = await newShellPage();
     try {
         await page.evaluate(() => (window as any).__sidebarHoverProbe.collapse());
         await wait(500);
+        // 悬停 → 图钉固定 → 移开鼠标，此时是真正展开
         await page.mouse.move(30, 450);
         await wait(500);
+        await page.evaluate(() => document.querySelector(".app-workspace-sidebar-collapse-button")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+        await page.mouse.move(900, 450);
+        await wait(600);
 
-        // 悬停态下侧栏顶部按钮是“收起”：点击即固定收起（写偏好）。
-        // 鼠标仍停在侧栏上时预览会继续撑宽——移开后应平滑回到折叠宽。
-        await page.evaluate(() => (window as any).__sidebarHoverProbe.collapse());
+        // 再点一次顶部按钮（此时是“收起侧栏”）→ 折叠并写偏好
+        await page.evaluate(() => document.querySelector(".app-workspace-sidebar-collapse-button")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
         await page.mouse.move(900, 450);
         await wait(700);
+
         const state = await railState(page);
         expect(state.railW).toBeLessThan(120);
         expect(state.hover).toBe(false);

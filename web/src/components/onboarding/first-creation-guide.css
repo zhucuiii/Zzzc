@@ -20,7 +20,13 @@
 .first-creation-navigation button:disabled { opacity: 0.3; cursor: default; }
 .first-creation-guide button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 .first-creation-entry { width: calc(100% - 2px); margin-left: 2px; }
-.app-workspace-sidebar-nav.is-collapsed .first-creation-entry { margin-left: -2px; }
+/* 折叠轨里与其它图标项共用同一中心线。折叠宽 86、footer 内边距 12px，
+   内容盒 62px，图标项宽 54px —— 水平居中需要 4px 左侧偏移。
+   该项是 inline-block，margin:auto 不会居中，必须显式给值。 */
+.app-workspace-sidebar-nav.is-collapsed .first-creation-entry {
+    margin-left: 4px;
+    margin-right: 0;
+}
 .first-creation-dim { position: fixed; z-index: 900; background: rgb(0 0 0 / 52%); pointer-events: none; }
 .first-creation-highlight { position: fixed; z-index: 901; border: 2px solid var(--primary); border-radius: 12px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 20%, transparent); pointer-events: none; }
 body:has(.first-creation-guide[data-step="generate"]) .node-element[data-node-selected="true"] .canvas-node-shell { border-color: transparent !important; box-shadow: none !important; }
