@@ -65,10 +65,22 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
         window.addEventListener("resize", syncPosition);
         window.addEventListener("scroll", syncPosition, true);
         window.addEventListener("pointerdown", closeOnOutsidePointer, true);
+
+        // 输入框自己会做尺寸过渡（展开/收起、改比例时高度变化），
+        // 光监听 window resize 收不到，浮层就会停在旧位置。用 ResizeObserver
+        // 跟着触发按钮的盒模型走，浮层才能始终贴着它一起动。
+        const trigger = buttonRef.current;
+        let observer: ResizeObserver | undefined;
+        if (trigger && typeof ResizeObserver !== "undefined") {
+            observer = new ResizeObserver(syncPosition);
+            observer.observe(trigger);
+        }
+
         return () => {
             window.removeEventListener("resize", syncPosition);
             window.removeEventListener("scroll", syncPosition, true);
             window.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+            observer?.disconnect();
         };
     }, [onOpenChange, open]);
 
