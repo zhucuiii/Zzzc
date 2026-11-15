@@ -12,8 +12,10 @@ import { useUserStore } from "@/stores/use-user-store";
 import { isLocalWorkspaceMode } from "@/services/workspace-mode";
 
 // 悬停预览的展开/收回节奏：意图延迟防误触，宽限期防边缘抖动。
-const SIDEBAR_HOVER_OPEN_DELAY_MS = 120;
-const SIDEBAR_HOVER_CLOSE_DELAY_MS = 180;
+// 展开延迟压到 80ms：再加上 220ms 宽度过渡，指针停留约 0.3s 就应该完全展开；
+// 再长会把"响应"和"动画"叠成明显的等待感。收回略慢一点，避免边缘抖动。
+const SIDEBAR_HOVER_OPEN_DELAY_MS = 80;
+const SIDEBAR_HOVER_CLOSE_DELAY_MS = 200;
 
 const WorkspaceCommandPalette = lazy(() => import("@/components/layout/workspace-command-palette").then((module) => ({ default: module.WorkspaceCommandPalette })));
 

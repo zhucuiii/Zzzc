@@ -1769,7 +1769,7 @@
     .app-workspace-sidebar-slot {
         width: auto;
         flex: 0 0 auto;
-        transition: width 280ms var(--ease-aceternity);
+        transition: width var(--sidebar-motion);
     }
 
     .app-workspace-sidebar-slot.is-collapsed {
@@ -1848,10 +1848,28 @@
     }
 
     .app-workspace-sidebar-nav.is-collapsed .app-workspace-sidebar-search-label,
-    .app-workspace-sidebar-nav.is-collapsed .app-workspace-sidebar-search-shortcut,
+    .app-workspace-sidebar-nav.is-collapsed .app-workspace-sidebar-search-shortcut {
+        display: none;
+    }
+
+    /* 菜单文字与右侧元信息随侧栏宽度一起淡入淡出。
+       display:none 不能过渡，会让文字在切类名的一瞬间整块弹出；
+       这里用透明度 + 最大宽度收起，视觉上和轨道展开同步。 */
+    .app-workspace-nav-title,
+    .app-workspace-nav-meta {
+        max-width: 100%;
+        opacity: 1;
+        transition:
+            opacity calc(var(--sidebar-motion) * 0.8) ease-out,
+            max-width calc(var(--sidebar-motion) * 0.55) ease-out;
+    }
+
     .app-workspace-nav-link.is-collapsed .app-workspace-nav-title,
     .app-workspace-nav-link.is-collapsed .app-workspace-nav-meta {
-        display: none;
+        max-width: 0;
+        overflow: hidden;
+        opacity: 0;
+        pointer-events: none;
     }
 
     .app-workspace-nav-link.is-collapsed .app-workspace-nav-main {
@@ -19984,6 +20002,10 @@ html:not(.dark) .creation-home .creation-user-message-copy-wrap { box-shadow: 0 
     --user-control-height: 38px;
     --user-icon-size: 16px;
     --user-motion: 180ms cubic-bezier(.16, 1, .3, 1);
+    /* 侧栏宽度过渡：出口与入口共用同一条曲线与时长，占位槽与轨道才同步。
+       曲线经过实测挑选——100ms 处已完成 96%，160ms 左右落定；
+       过早饱和的强缓出曲线会在尾部拖着 9% 走完剩下 160ms，看起来"发闷"。 */
+    --sidebar-motion: 220ms cubic-bezier(.16, 1, .3, 1);
     min-width: 0;
     background: var(--user-page-bg);
     color: var(--user-ink);
@@ -20020,7 +20042,7 @@ html:not(.dark) .creation-home .creation-user-message-copy-wrap { box-shadow: 0 
     flex-basis: var(--workspace-reference-sidebar) !important;
     background: var(--user-page-bg) !important;
     border-right: 0 !important;
-    transition: width var(--user-motion);
+    transition: width var(--sidebar-motion);
 }
 .dark .app-user-workspace.app-product-workspace .app-workspace-sidebar,
 .dark .app-user-workspace.app-product-workspace .app-workspace-sidebar-nav,

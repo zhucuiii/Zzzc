@@ -142,7 +142,8 @@ function NavItem({
                 ) : (
                     <span className="size-1.5 shrink-0 rounded-full bg-current opacity-40" aria-hidden />
                 )}
-                {!collapsed ? <span className="app-workspace-nav-title truncate">{item.title}</span> : null}
+                {/* 文字随宽度过渡淡入，而不是在切类名的一瞬间整块弹出。 */}
+                <span className="app-workspace-nav-title truncate">{item.title}</span>
             </span>
             <span className="app-workspace-nav-meta flex shrink-0 items-center gap-2">
                 {item.disabled && !collapsed ? <span className="text-[var(--fs-micro)] font-normal text-foreground/35">正在开发</span> : null}
