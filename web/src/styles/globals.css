@@ -7831,12 +7831,15 @@ html:not(.dark) .creation-studio-control:hover,
            叠加会产生最多一个行程的错位（实测间隙波动 208px）。逐帧瞬贴
            的间隙波动是 0，才是真正的"丝滑跟随"。 */
         bottom: var(--panel-live-offset, auto) !important;
+        /* 横向同样逐帧同步：切比例时按钮横坐标会变，只跟纵向会横向滞后。 */
+        left: var(--panel-live-left, auto) !important;
     }
 
     .canvas-image-settings-popover[data-side="bottom"] {
         transform-origin: top left;
         animation: canvas-image-settings-in-down var(--motion-dur-fast-calc) var(--motion-ease-out) both;
         top: var(--panel-live-offset, auto) !important;
+        left: var(--panel-live-left, auto) !important;
     }
 
     @keyframes canvas-image-settings-in-up {

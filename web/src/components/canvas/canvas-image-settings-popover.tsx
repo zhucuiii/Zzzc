@@ -48,6 +48,20 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
         setOpen(nextOpen);
         onOpenChange?.(nextOpen);
     };
+    // 面板横向定位与浮层里用的是同一套规则；抽出来供逐帧跟随复用，
+    // 宽度用固定值而不是读 DOM，避免每帧强制重排。
+    const panelWidthValue = Math.min(420, window.innerWidth - 24);
+    const leftOf = (box: DOMRect) => Math.max(
+        12,
+        Math.min(
+            window.innerWidth - panelWidthValue - 12,
+            placement?.endsWith("Right")
+                ? box.right - panelWidthValue
+                : placement === "top" || placement === "bottom"
+                    ? box.left + box.width / 2 - panelWidthValue / 2
+                    : box.left,
+        ),
+    );
 
     useEffect(() => {
         if (!open) return;
@@ -105,6 +119,11 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
                     ? `${window.innerHeight - box.top + 8}px`
                     : `${box.bottom + 8}px`,
             );
+            // 横向也要逐帧跟：切比例时触发按钮会随节点宽度改变横坐标，
+            // 只同步纵向会让浮层在水平方向滞后于按钮，看起来就是"滑一下才到"。
+            // 宽度取面板自身定值（420 或窗口可用宽），不读 offsetWidth ——
+            // 每帧读取布局属性会强制同步重排，反而更卡。
+            panel.style.setProperty("--panel-live-left", `${leftOf(box)}px`);
             // 注意：这里不再逐帧更新高度上限。内容高度贴着上限时，上限每帧
             // 变动会让浮层自身高度跟着抖，产生肉眼可见的顿挫；而位置跟随
             // 已经足够，高度交给打开时确定的上限即可。
