@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Home, Pin, Plug, Plus, Settings2, HardDrive, Sun, Moon } from "lucide-react";
+import { ChevronLeft, ChevronRight, Home, Plug, Plus, Settings2, HardDrive, Sun, Moon } from "lucide-react";
 import { LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
@@ -69,7 +69,7 @@ function buildNav(features: FeatureAvailability): { groups: WorkspaceNavGroup[];
     return { groups, footer: [] };
 }
 
-function WorkspaceSwitcher({ collapsed, onNavigate, onExpand, onCollapse, hoverPreview = false }: { collapsed: boolean; onNavigate: () => void; onExpand: () => void; onCollapse: () => void; hoverPreview?: boolean }) {
+function WorkspaceSwitcher({ collapsed, onNavigate, onExpand, onCollapse }: { collapsed: boolean; onNavigate: () => void; onExpand: () => void; onCollapse: () => void }) {
     const appearance = useAppearanceStore((state) => state.appearance);
 
     if (collapsed) {
@@ -95,11 +95,11 @@ function WorkspaceSwitcher({ collapsed, onNavigate, onExpand, onCollapse, hoverP
             <button
                 type="button"
                 className="app-workspace-sidebar-collapse-button"
-                aria-label={hoverPreview ? "固定展开侧栏" : "收起侧栏"}
-                title={hoverPreview ? "固定展开侧栏" : "收起侧栏"}
-                onClick={hoverPreview ? onExpand : onCollapse}
+                aria-label="收起侧栏"
+                title="收起侧栏"
+                onClick={onCollapse}
             >
-                {hoverPreview ? <Pin className="size-4" strokeWidth={1.7} /> : <ChevronLeft className="size-4" strokeWidth={1.7} />}
+                <ChevronLeft className="size-4" strokeWidth={1.7} />
             </button>
         </div>
     );
@@ -264,7 +264,7 @@ function NavGroup({ group, activeId, onNavigate, onOpenSearch, collapsed }: { gr
     );
 }
 
-export function WorkspaceSidebarNav({ collapsed, onNavigate, onOpenSearch, onExpand, onCollapse, hoverPreview = false }: { collapsed: boolean; onNavigate: () => void; onOpenSearch: () => void; onExpand: () => void; onCollapse: () => void; hoverPreview?: boolean }) {
+export function WorkspaceSidebarNav({ collapsed, onNavigate, onOpenSearch, onExpand, onCollapse }: { collapsed: boolean; onNavigate: () => void; onOpenSearch: () => void; onExpand: () => void; onCollapse: () => void }) {
     const theme = useThemeStore((state) => state.theme);
     const setTheme = useThemeStore((state) => state.setTheme);
     const { pathname } = useLocation();
@@ -315,7 +315,7 @@ export function WorkspaceSidebarNav({ collapsed, onNavigate, onOpenSearch, onExp
 
     return (
         <div className={cn("app-workspace-sidebar-nav flex h-full shrink-0 flex-col", collapsed && "is-collapsed")}>
-            <WorkspaceSwitcher collapsed={collapsed} onNavigate={onNavigate} onExpand={onExpand} onCollapse={onCollapse} hoverPreview={hoverPreview} />
+            <WorkspaceSwitcher collapsed={collapsed} onNavigate={onNavigate} onExpand={onExpand} onCollapse={onCollapse} />
 
             <LayoutGroup id="workspace-sidebar-nav">
             <div
