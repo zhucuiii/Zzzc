@@ -17,12 +17,76 @@ type Location struct {
 	PreviousFiles map[string]string `json:"previousFiles,omitempty"`
 }
 
+// 产品名与数据目录名；历史版本用的是 "BeefTV"。
+const (
+	dataDirName       = "Zzzc"
+	legacyDataDirName = "BeefTV"
+)
+
 func DefaultRoot() (string, error) {
 	root, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(root, "BeefTV"), nil
+	next := filepath.Join(root, dataDirName)
+	// 改名不能让已有用户的画布"凭空消失"：新目录还不存在、旧目录在，
+	// 就把旧目录整体改名过来。改名是同一卷内的原子操作，失败也不丢数据
+	// （旧目录原样保留），下次启动会再试一次。
+	if err := adoptLegacyDataDir(root, next); err != nil {
+		return "", err
+	}
+	return next, nil
+}
+
+// adoptLegacyDataDir 在首次以新名字启动时接管旧数据目录。
+// 只在"新目录不存在"时动手，绝不覆盖任何已存在的新数据。
+func adoptLegacyDataDir(root, next string) error {
+	if _, err := os.Stat(next); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("检查应用数据目录失败: %w", err)
+	}
+	legacy := filepath.Join(root, legacyDataDirName)
+	info, err := os.Stat(legacy)
+	if err != nil || !info.IsDir() {
+		// 没有旧数据：全新安装，新目录由后续流程创建。
+		return nil
+	}
+	if err := os.Rename(legacy, next); err != nil {
+		// 跨卷或权限问题无法原子改名时，退化为复制后保留原件，
+		// 宁可多留一份旧目录，也不让用户看到空工作区。
+		if copyErr := copyDir(legacy, next); copyErr != nil {
+			return fmt.Errorf("迁移旧应用数据目录失败: %w", copyErr)
+		}
+	}
+	return nil
+}
+
+// copyDir 逐项复制目录内容（含权限位），用于无法原子改名的跨卷迁移。
+// 只读取源目录，从不修改或删除它。
+func copyDir(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if entry.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, info.Mode().Perm())
+	})
 }
 
 // The pointer stays in the system profile, independent of the selected data volume.

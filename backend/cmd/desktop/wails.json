@@ -1,7 +1,7 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "BeefTV",
-  "outputfilename": "BeefTV",
+  "name": "Zzzc",
+  "outputfilename": "Zzzc",
   "info": { "protocols": [{ "scheme": "beeftv", "description": "BeefTV skill link", "role": "Viewer" }] },
   "frontend:dir": "../../../web",
   "frontend:install": "bun install --frozen-lockfile",

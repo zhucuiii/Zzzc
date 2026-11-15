@@ -77,10 +77,10 @@ echo "=== 构建 $VERSION（commit $(git rev-parse --short HEAD)） ==="
 powershell -NoProfile -ExecutionPolicy Bypass -File "$ROOT/scripts/build-beeftv-windows-release.ps1"
 
 BIN_DIR="$ROOT/backend/cmd/desktop/build/bin"
-EXE="$BIN_DIR/BeefTV.exe"
-[[ -f "$EXE" ]] || { echo "构建完成但找不到 BeefTV.exe，停止发版。" >&2; exit 1; }
+EXE="$BIN_DIR/Zzzc.exe"
+[[ -f "$EXE" ]] || { echo "构建完成但找不到 Zzzc.exe，停止发版。" >&2; exit 1; }
 mkdir -p "$OUTPUT_DIR"
-ZIP="$OUTPUT_DIR/BeefTV-$VERSION-windows-amd64.zip"
+ZIP="$OUTPUT_DIR/Zzzc-$VERSION-windows-amd64.zip"
 MANIFEST="$OUTPUT_DIR/desktop-update-v2.json"
 rm -f -- "$ZIP" "$MANIFEST"
 
@@ -119,7 +119,7 @@ const payload = JSON.parse(Buffer.from(envelope.payload, 'base64').toString('utf
 const asset = payload.platforms?.['windows-amd64'];
 if (payload.schema !== 2 || payload.version !== version || !asset) throw new Error('更新清单的版本或平台不匹配');
 const urls = asset.urls?.length ? asset.urls : [asset.url];
-const expected = `https://github.com/${repo}/releases/download/${version}/BeefTV-${version}-windows-amd64.zip`;
+const expected = `https://github.com/${repo}/releases/download/${version}/Zzzc-${version}-windows-amd64.zip`;
 if (!urls.includes(expected)) throw new Error('更新清单的下载地址不是当前 Release');
 const digest = crypto.createHash('sha256').update(fs.readFileSync(zipPath)).digest('hex');
 if (asset.sha256 !== digest || asset.size !== fs.statSync(zipPath).size) throw new Error('ZIP 的签名哈希或大小不匹配');
