@@ -1,23 +1,5 @@
 import type { ModelCapability } from "@/stores/use-config-store";
 import type { ModelProtocolDefinition } from "@/lib/model-protocols";
-import {
-    DEFAULT_BASE_URL as LL2_DEFAULT_BASE_URL,
-    LL2_CHANNEL_ID,
-    LL2_CHANNEL_NAME,
-    LL2_PRESET_MODELS,
-    buildLL2ModelChannel,
-    upgradeLL2ModelProfile,
-} from "../../../plugin-packages/beeftv-plugin-ll2/client/index.js";
-import {
-    DEFAULT_BASE_URL as YSDUI_DEFAULT_BASE_URL,
-    YSDUI_CHANNEL_ID,
-    YSDUI_CHANNEL_NAME,
-    YSDUI_PRESET_MODELS,
-    buildYsduiModelChannel,
-    upgradeYsduiModelProfile,
-} from "../../../plugin-packages/beeftv-plugin-ysdui/client/index.js";
-
-type BuiltinPresetModel = (typeof LL2_PRESET_MODELS)[number] | (typeof YSDUI_PRESET_MODELS)[number];
 
 export type BuiltinModelProfile = {
     model: string;
@@ -28,8 +10,19 @@ export type BuiltinModelProfile = {
     capabilityConfig?: unknown;
 };
 
+export type BuiltinPresetModel = {
+    model: string;
+    displayName?: string;
+    capability?: string;
+    protocol?: string;
+    /** 预置模型自带的生成参数；写进渠道档案的 capabilityConfig。 */
+    capabilityConfig?: unknown;
+    /** 该模型的默认生成选项。 */
+    defaultOptions?: Record<string, unknown>;
+};
+
 // 内置插件在设置页里的行为都从这里查表：归属判定、预置模型、协议可用性、
-// 新建渠道和旧档案升级。加第三个内置插件时只加一条，不用再改每个调用点。
+// 新建渠道和旧档案升级。加新的内置插件时只加一条，不用再改每个调用点。
 export type BuiltinPresetPlugin = {
     /** 这个插件的协议都以这些前缀开头。 */
     protocolPrefixes: string[];
@@ -50,38 +43,13 @@ export type BuiltinPresetPlugin = {
     upgradeProfile: <T>(profile: T) => T;
 };
 
-/** 没有显式声明接口时按能力补的默认协议；ll2 和 compatible 共用同一组。 */
+/** 没有显式声明接口时按能力补的默认协议。 */
 export const TEXT_AUDIO_CANDIDATES: Partial<Record<ModelCapability, string>> = { text: "chat-completion", audio: "openai-audio" };
 export const COMPATIBLE_CANDIDATES: Partial<Record<ModelCapability, string>> = { ...TEXT_AUDIO_CANDIDATES, image: "openai-image" };
 
-export const BUILTIN_PRESETS: Record<string, BuiltinPresetPlugin> = {
-    [LL2_CHANNEL_ID]: {
-        protocolPrefixes: ["ll2-"],
-        hosts: [new URL(LL2_DEFAULT_BASE_URL).hostname],
-        hostSuffixes: [".ll2.cn"],
-        candidates: COMPATIBLE_CANDIDATES,
-        models: LL2_PRESET_MODELS,
-        presetName: LL2_CHANNEL_NAME,
-        presetBaseUrl: LL2_DEFAULT_BASE_URL,
-        presetDescription: "文本、视频与超分",
-        declaresReferenceMediaTransport: false,
-        buildChannel: (args) => buildLL2ModelChannel({ apiKey: args.apiKey, baseUrl: args.baseUrl, selectedModels: args.selectedModels }),
-        upgradeProfile: (profile) => upgradeLL2ModelProfile(profile),
-    },
-    [YSDUI_CHANNEL_ID]: {
-        protocolPrefixes: ["ysdui-"],
-        hosts: [new URL(YSDUI_DEFAULT_BASE_URL).hostname, "ysdui.cn"],
-        hostSuffixes: [".ysdui.cn"],
-        candidates: TEXT_AUDIO_CANDIDATES,
-        models: YSDUI_PRESET_MODELS,
-        presetName: YSDUI_CHANNEL_NAME,
-        presetBaseUrl: YSDUI_DEFAULT_BASE_URL,
-        presetDescription: "文本、图像与视频",
-        declaresReferenceMediaTransport: true,
-        buildChannel: (args) => buildYsduiModelChannel({ apiKey: args.apiKey, baseUrl: args.baseUrl, selectedModels: args.selectedModels, existingChannel: args.existingChannel }),
-        upgradeProfile: (profile) => upgradeYsduiModelProfile(profile),
-    },
-};
+// LL2 与银盛云枢壹算两个内置渠道插件已移除。表保持为空，调用方通过
+// builtinPreset() 拿到 undefined 后走普通第三方渠道的路径。
+export const BUILTIN_PRESETS: Record<string, BuiltinPresetPlugin> = {};
 
 export function builtinPreset(id: string): BuiltinPresetPlugin | undefined {
     return BUILTIN_PRESETS[id];

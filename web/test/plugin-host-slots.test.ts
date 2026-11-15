@@ -385,8 +385,6 @@ describe("plugin host slots, events, and lifecycle", () => {
 
     test("activates real bundled ESM client plugins from plugin-packages and cleans up on disable", async () => {
         const marketMod = await import("../../plugin-packages/beeftv-plugin-market/client/index.js");
-        const ll2Mod = await import("../../plugin-packages/beeftv-plugin-ll2/client/index.js");
-        const ysduiMod = await import("../../plugin-packages/beeftv-plugin-ysdui/client/index.js");
         const stickyMod = await import("../../plugin-packages/beeftv-plugin-sticky-note/client/index.js");
         const ecommerceMod = await import("../../plugin-packages/beeftv-plugin-ecommerce-hero/client/index.js");
         const charReplaceMod = await import("../../plugin-packages/beeftv-plugin-character-replacement/client/index.js");
@@ -394,8 +392,6 @@ describe("plugin host slots, events, and lifecycle", () => {
 
         const packages = [
             { id: "beeftv-plugin-market", name: "插件市场", mod: marketMod },
-            { id: "beeftv-plugin-ll2", name: "LL2 算力与视频渠道", mod: ll2Mod },
-            { id: "beeftv-plugin-ysdui", name: "银盛云枢壹算算力与多模态渠道", mod: ysduiMod },
             { id: "beeftv-plugin-sticky-note", name: "便签节点", mod: stickyMod },
             { id: "beeftv-plugin-ecommerce-hero", name: "一键商品主图", mod: ecommerceMod },
             { id: "beeftv-plugin-character-replacement", name: "AI 角色替换工作室", mod: charReplaceMod },
@@ -420,40 +416,6 @@ describe("plugin host slots, events, and lifecycle", () => {
         expect(
             getPluginSlotEntries("pluginCenter.section").some((e) => e.pluginId === "beeftv-plugin-market"),
         ).toBe(true);
-
-        // LL2 plugin contributes app.settings and builds a complete BYOK channel
-        expect(
-            getPluginSlotEntries("app.settings").some((e) => e.pluginId === "beeftv-plugin-ll2"),
-        ).toBe(true);
-        const builtChannel = ll2Mod.buildLL2ModelChannel({ apiKey: "sk-test-demo", baseUrl: "https://api.ll2.cn" });
-        expect(builtChannel.id).toBe("ll2");
-        expect(builtChannel.models).toContain("doubao-seedance-2-0-fast");
-        expect(builtChannel.models).toContain("Super Vega 1.0-pro-mini");
-        expect(builtChannel.models).toContain("auto-hd");
-        expect(builtChannel.modelProfiles).toHaveLength(9);
-
-        expect(
-            getPluginSlotEntries("app.settings").some((e) => e.pluginId === "beeftv-plugin-ysdui"),
-        ).toBe(true);
-        const builtYsduiChannel = ysduiMod.buildYsduiModelChannel({
-            apiKey: "sk-test-demo",
-            baseUrl: "https://tokenhub.ysdui.cn",
-            selectedModels: ["doubao-seedream-5-0-260128", "wand-vega-image-flash", "doubao-seedance-2-0-260128", "custom-text-model"],
-            existingChannel: {
-                id: "channel-random-123",
-                name: "我的云枢壹算",
-                models: ["custom-text-model"],
-                modelProfiles: [{ model: "custom-text-model", capability: "text", protocol: "chat-completion" }],
-            },
-        });
-        expect(builtYsduiChannel.id).toBe("ysdui");
-        expect(builtYsduiChannel.models).toContain("doubao-seedream-5-0-260128");
-        expect(builtYsduiChannel.models).toContain("wand-vega-image-flash");
-        expect(builtYsduiChannel.models).toContain("doubao-seedance-2-0-260128");
-        expect(builtYsduiChannel.models).toContain("custom-text-model");
-        expect(builtYsduiChannel.modelProfiles).toHaveLength(4);
-        const defaultYsduiChannel = ysduiMod.buildYsduiModelChannel({ apiKey: "sk-test-demo", baseUrl: "https://tokenhub.ysdui.cn" });
-        expect(defaultYsduiChannel.modelProfiles).toHaveLength(32);
 
         // Untrusted plugins without settings.write cannot read or mutate channels
         const untrustedHost = createBeefTVPluginHost("untrusted-plugin", {
