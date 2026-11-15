@@ -3,7 +3,6 @@ import { LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 
-import { BrandLogoFrame } from "@/components/brand/brand-logo";
 import { WorkspaceSidebarUpdate } from "@/components/layout/workspace-sidebar-update";
 import { WorkspaceSidebarAccount } from "@/components/layout/workspace-sidebar-account";
 import { Kbd } from "@/components/ui/base/kbd";
@@ -84,12 +83,10 @@ function WorkspaceSwitcher({ collapsed, hoverPreview, onNavigate, onExpand, onCo
 
     return (
         <div className="app-workspace-sidebar-brand-row relative shrink-0 px-3 pt-3">
+            {/* 品牌位只显示品牌名文字：图标已按需求移除，避免和文字重复表达。 */}
             <Link to="/" onClick={onNavigate} className="app-workspace-sidebar-brand-button group" aria-label={`${appearance.brandName}首页`}>
-                <span className="flex min-w-0 items-center gap-2">
-                    <BrandLogoFrame className="app-workspace-brand-mark grid size-8 shrink-0 place-items-center rounded-[var(--r-sm)] shadow-sm" logoClassName="size-5 object-contain" alt="" fallback={<span className="app-workspace-brand-placeholder" aria-hidden>B</span>} />
-                    <span className="flex min-w-0">
-                        <span className="app-workspace-brand-wordmark truncate text-[var(--fs-body)] leading-none font-semibold">{appearance.brandName}</span>
-                    </span>
+                <span className="flex min-w-0 items-center">
+                    <span className="app-workspace-brand-wordmark truncate text-[var(--fs-body)] leading-none font-semibold">{appearance.brandName}</span>
                 </span>
             </Link>
             {/* 悬停临时展开时按钮变成“固定展开”：点了把侧栏钉住（写偏好），
