@@ -1,0 +1,5 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Zzzc">
+  <!-- Zzzc 品牌标记：粗几何 Z，与原有单字母标记同一套笔形语言
+       （等宽笔画、平切端点、右上一个斜切缺口）。纯白，靠 CSS filter 反色适配浅色主题。 -->
+  <path fill="#ffffff" d="M20 18h60v15.5L46.5 66.5H80V82H20V66.5L53.5 33.5H20z"/>
+</svg>

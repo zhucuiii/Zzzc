@@ -10,8 +10,10 @@ export const DEFAULT_PUBLIC_APPEARANCE: PublicAppearance = {
     brandSlug: "beeftv",
     authHeroTitle: "让一个故事，\n从文字走向银幕。",
     authHeroDescription: "",
-    logoUrl: "/beef-logo.png",
-    darkLogoUrl: "/beef-logo.png",
+    // 品牌行自身已渲染品牌名文字，logo 位只放方形的 Z 标记，
+    // 用横版 lockup 会被方形容器压扁。
+    logoUrl: "/zzzc-mark.png",
+    darkLogoUrl: "/zzzc-mark.png",
     logoFrameEnabled: false,
     authVideoUrl: "https://boss-shjd.biliapi.net/updream/aniforge/video/video_bbcb00bd-650d-4249-9346-5cd21fd2484c_m1hc-u0-1pu13x-3v1s.mp4",
     authVideoPosterUrl: "https://i0.hdslb.com/bfs/aitool/aniforge/image/02933f26-5f1b-49ff-a811-b7f95ee5e5b8_m1hc-u0-sau.jpg",
