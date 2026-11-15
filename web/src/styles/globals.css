@@ -1858,15 +1858,20 @@
     .app-workspace-nav-title,
     .app-workspace-nav-meta {
         max-width: 100%;
+        max-height: 2.2em;
         opacity: 1;
         transition:
             opacity calc(var(--sidebar-motion) * 0.8) ease-out,
-            max-width calc(var(--sidebar-motion) * 0.55) ease-out;
+            max-width calc(var(--sidebar-motion) * 0.55) ease-out,
+            max-height calc(var(--sidebar-motion) * 0.55) ease-out;
     }
 
+    /* 折叠态内容是纵向排列（图标在上），淡出的文字如果还占位，会把图标整体
+       顶偏 —— 所以同时把高度和行高收到 0，让它既不显示也不参与布局。 */
     .app-workspace-nav-link.is-collapsed .app-workspace-nav-title,
     .app-workspace-nav-link.is-collapsed .app-workspace-nav-meta {
         max-width: 0;
+        max-height: 0;
         overflow: hidden;
         opacity: 0;
         pointer-events: none;

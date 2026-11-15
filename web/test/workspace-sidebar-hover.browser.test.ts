@@ -244,6 +244,37 @@ test("占位槽始终与真实侧栏等宽：固定展开不产生间隙跳变",
     }
 });
 
+test("折叠态导航图标在胶囊内垂直居中且不被裁切", async () => {
+    const page = await newShellPage();
+    try {
+        await page.evaluate(() => (window as any).__sidebarHoverProbe.collapse());
+        await page.waitForTimeout(500);
+        await page.mouse.move(900, 500);
+        await page.waitForTimeout(600);
+
+        const rows = await page.evaluate(() => {
+            const out: Array<{ id: string | null; offset: number; inside: boolean }> = [];
+            for (const el of document.querySelectorAll(".app-workspace-nav-link.is-collapsed")) {
+                const pill = el.getBoundingClientRect();
+                const icon = el.querySelector("svg")?.getBoundingClientRect();
+                if (!icon) continue;
+                out.push({
+                    id: el.getAttribute("data-nav-id"),
+                    // 图标中心与胶囊中心的差；淡出的标题若仍占位会把它顶偏。
+                    offset: Math.round((icon.y + icon.height / 2) - (pill.y + pill.height / 2)),
+                    inside: icon.y >= pill.y && icon.bottom <= pill.bottom,
+                });
+            }
+            return out;
+        });
+        expect(rows.length).toBeGreaterThanOrEqual(8);
+        const offenders = rows.filter((row) => Math.abs(row.offset) > 1 || !row.inside);
+        expect(offenders.map((row) => row.id)).toEqual([]);
+    } finally {
+        await page.close();
+    }
+});
+
 test("折叠态 footer 图标共用一条垂直中线", async () => {
     const page = await newShellPage();
     try {
