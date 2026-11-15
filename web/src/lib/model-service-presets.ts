@@ -8,15 +8,17 @@ import { BUILTIN_PRESETS, COMPATIBLE_CANDIDATES, builtinPreset, builtinProtocols
 import { DEFAULT_BASE_URL as LL2_DEFAULT_BASE_URL, LL2_CHANNEL_ID, LL2_CHANNEL_NAME } from "../../../plugin-packages/beeftv-plugin-ll2/client/index.js";
 import { DEFAULT_BASE_URL as YSDUI_DEFAULT_BASE_URL, YSDUI_CHANNEL_ID, YSDUI_CHANNEL_NAME } from "../../../plugin-packages/beeftv-plugin-ysdui/client/index.js";
 
+// 只列需要出现在「选择服务商」里的条目。ll2 / ysdui 两个内置预设已按需求从
+// 新建入口下架；它们仍留在 BUILTIN_PRESETS 里，用于识别和兼容已经保存的渠道。
 export const MODEL_SERVICE_PRESETS = [
     { id: "compatible", name: "第三方模型服务", subtitle: "OpenAI 兼容 API · 中转服务", icon: "OpenAI", baseUrl: "", apiFormat: "openai" },
-    { id: LL2_CHANNEL_ID, name: LL2_CHANNEL_NAME, subtitle: "文本 · 多款主流视频 · 视频超分", icon: "OpenAI", baseUrl: LL2_DEFAULT_BASE_URL, apiFormat: "openai" },
-    { id: YSDUI_CHANNEL_ID, name: YSDUI_CHANNEL_NAME, subtitle: "文本 · 多款主流图片 · 多款主流视频", icon: "OpenAI", baseUrl: YSDUI_DEFAULT_BASE_URL, apiFormat: "openai" },
     { id: "openai", name: "OpenAI", subtitle: "文本 · 图片（Sora 已停用）", icon: "OpenAI", baseUrl: "https://api.openai.com/v1", apiFormat: "openai" },
     { id: "gemini", name: "Google Gemini", subtitle: "文本 · 图片（Veo 已停用）", icon: "Gemini", baseUrl: "https://generativelanguage.googleapis.com", apiFormat: "gemini" },
     { id: "ark", name: "火山方舟", subtitle: "文本 · 即梦图片 · Seedance 视频", icon: "Volcengine", baseUrl: "https://ark.cn-beijing.volces.com/api/v3", apiFormat: "openai" },
 ] as const;
-export type ModelServicePresetId = typeof MODEL_SERVICE_PRESETS[number]["id"];
+// 新建入口只提供 MODEL_SERVICE_PRESETS 里的条目，但已保存的渠道可能仍是
+// 已下架的内置预设（ll2 / ysdui），识别和兼容路径必须继续接受它们。
+export type ModelServicePresetId = typeof MODEL_SERVICE_PRESETS[number]["id"] | typeof LL2_CHANNEL_ID | typeof YSDUI_CHANNEL_ID;
 export const CAPABILITY_LABELS: Record<ModelCapability, string> = { text: "文本", image: "图片", video: "视频", audio: "音频" };
 
 /** 预设自带的模型数量；用于设置页说明文案，不再从渠道对象上读。 */
@@ -102,8 +104,17 @@ export function ysduiProtocolsAvailable(protocols: ModelProtocolDefinition[]): b
 }
 
 export function createServicePresetChannel(id: ModelServicePresetId, channelId: string, protocols?: ModelProtocolDefinition[]): ModelChannel {
-    const preset = MODEL_SERVICE_PRESETS.find((item) => item.id === id)!;
     const plugin = builtinPreset(id);
+    // ll2 / ysdui 已从新建列表下架，但已保存的渠道和测试仍可能需要构造它们，
+    // 所以名称和地址回退到插件自己的定义，而不是依赖选择列表。
+    const preset = MODEL_SERVICE_PRESETS.find((item) => item.id === id) ?? {
+        id,
+        name: plugin?.presetName ?? id,
+        subtitle: plugin?.presetDescription ?? "",
+        icon: "OpenAI" as const,
+        baseUrl: plugin?.presetBaseUrl ?? "",
+        apiFormat: "openai" as const,
+    };
     if (plugin) {
         // 新建预设渠道时还没有旧渠道；已有渠道的自定义模型由插件自己的同步流程合并。
         const built = plugin.buildChannel({ apiKey: "", baseUrl: preset.baseUrl, selectedModels: undefined, existingChannel: undefined });

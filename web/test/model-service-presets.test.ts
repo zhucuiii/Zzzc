@@ -226,9 +226,10 @@ test("official OpenAI and Gemini presets stop advertising discontinued video API
         expect(subtitle).not.toMatch(/·\s*(Veo\s*)?视频\s*$/);
     }
     expect(presets.get("compatible")).toContain("中转");
-    expect(presets.get("ll2")).toContain("视频");
-    expect(presets.get("ysdui")).toContain("视频");
     expect(presets.get("ark")).toContain("Seedance 视频");
+    // ll2 / ysdui 已从新建服务商列表下架；它们只用于识别已保存的渠道。
+    expect(presets.has("ll2")).toBe(false);
+    expect(presets.has("ysdui")).toBe(false);
 });
 
 test("Ysdui service preset resolves all 4 Ysdui protocols when plugin is enabled and fails closed when disabled", () => {

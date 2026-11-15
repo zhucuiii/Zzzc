@@ -3,6 +3,7 @@ import type { ModelProtocolDefinition } from "@/lib/model-protocols";
 import {
     DEFAULT_BASE_URL as LL2_DEFAULT_BASE_URL,
     LL2_CHANNEL_ID,
+    LL2_CHANNEL_NAME,
     LL2_PRESET_MODELS,
     buildLL2ModelChannel,
     upgradeLL2ModelProfile,
@@ -10,6 +11,7 @@ import {
 import {
     DEFAULT_BASE_URL as YSDUI_DEFAULT_BASE_URL,
     YSDUI_CHANNEL_ID,
+    YSDUI_CHANNEL_NAME,
     YSDUI_PRESET_MODELS,
     buildYsduiModelChannel,
     upgradeYsduiModelProfile,
@@ -36,6 +38,10 @@ export type BuiltinPresetPlugin = {
     /** 没有显式声明接口时，按能力给的默认协议。 */
     candidates: Partial<Record<ModelCapability, string>>;
     models: readonly BuiltinPresetModel[];
+    /** 新建渠道时的默认名称，也是「选择服务商」里的显示名。 */
+    presetName: string;
+    /** 新建渠道时的默认服务地址。 */
+    presetBaseUrl: string;
     /** 用在「已预置 N 款…模型及协议」的说明里。 */
     presetDescription: string;
     /** 插件自己在 manifest 里声明了素材怎么传时，设置页不再显示手填字段。 */
@@ -55,6 +61,8 @@ export const BUILTIN_PRESETS: Record<string, BuiltinPresetPlugin> = {
         hostSuffixes: [".ll2.cn"],
         candidates: COMPATIBLE_CANDIDATES,
         models: LL2_PRESET_MODELS,
+        presetName: LL2_CHANNEL_NAME,
+        presetBaseUrl: LL2_DEFAULT_BASE_URL,
         presetDescription: "文本、视频与超分",
         declaresReferenceMediaTransport: false,
         buildChannel: (args) => buildLL2ModelChannel({ apiKey: args.apiKey, baseUrl: args.baseUrl, selectedModels: args.selectedModels }),
@@ -66,6 +74,8 @@ export const BUILTIN_PRESETS: Record<string, BuiltinPresetPlugin> = {
         hostSuffixes: [".ysdui.cn"],
         candidates: TEXT_AUDIO_CANDIDATES,
         models: YSDUI_PRESET_MODELS,
+        presetName: YSDUI_CHANNEL_NAME,
+        presetBaseUrl: YSDUI_DEFAULT_BASE_URL,
         presetDescription: "文本、图像与视频",
         declaresReferenceMediaTransport: true,
         buildChannel: (args) => buildYsduiModelChannel({ apiKey: args.apiKey, baseUrl: args.baseUrl, selectedModels: args.selectedModels, existingChannel: args.existingChannel }),
