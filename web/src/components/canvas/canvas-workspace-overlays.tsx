@@ -99,17 +99,10 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
     // 如果让 React 每次渲染都重算并写进 style.transform，切比例时这一帧就会
     // 直接把面板拍到最后的位置，随后的 effect 再微调一次 —— 表现为"两段跳"，
     // 而中间的 CSS 过渡从终点跑到终点，等于没生效。
-    const initialPositionRef = useRef<{ left: number; top: number } | null>(null);
-    if (!initialPositionRef.current) {
-        initialPositionRef.current = getNodePanelPosition(node, viewport, { width: containerRef.current?.clientWidth || 0, height: containerRef.current?.clientHeight || 0 }, initialWidth, panelHeight, dragOffset, keepBelowNode, avoidBottomDock);
-    }
-    const initialPosition = initialPositionRef.current;
-    // 首次渲染之后，几何一律交给 layout effect，React 不再覆盖。
-    const mountedRef = useRef(false);
-    const isFirstRender = !mountedRef.current;
-    useLayoutEffect(() => {
-        mountedRef.current = true;
-    }, []);
+    // 几何完全由下面的 layout effect 负责：它在浏览器绘制前写入位置与宽度，
+    // 首帧过渡是关闭的（animatedRef 仍为 false），所以面板一出现就在正确位置。
+    // 之前让 React 首帧也写一遍，那一刻 containerRef 还是 null、clientWidth/Height
+    // 为 0，算出来是错的位置，面板会从错误位置"飞"过来。
     // The drag preview updates this ref every frame. Keeping it out of the
     // layout-effect deps avoids tearing down the ResizeObserver and viewport
     // subscriptions on each drag frame.
@@ -217,7 +210,6 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
             style={{
                 left: 0,
                 top: 0,
-                ...(isFirstRender ? { transform: `translate3d(${initialPosition.left}px, ${initialPosition.top}px, 0)`, width: initialWidth } : null),
                 maxHeight: allowOverflow ? "none" : "calc(100% - 84px)",
                 zIndex,
             }}
