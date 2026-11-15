@@ -7778,6 +7778,23 @@ html:not(.dark) .creation-studio-control:hover,
         overflow-y: auto;
     }
 
+    /* 图像设置浮层不显示滚动条：内容多时仍可滚轮/触摸滚动，
+       但不让系统滚动条在窄面板里占边、破坏留白。
+       面板根节点的 overflow 来自内联样式，所以这里用 !important 保证
+       隐藏滚动条的声明不被内联样式带回默认外观。 */
+    .canvas-image-settings-popover,
+    .canvas-image-settings-popover .ant-popover-inner-content {
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+    }
+
+    .canvas-image-settings-popover::-webkit-scrollbar,
+    .canvas-image-settings-popover .ant-popover-inner-content::-webkit-scrollbar {
+        width: 0 !important;
+        height: 0 !important;
+        display: none !important;
+    }
+
     .canvas-image-settings-popover .ant-segmented {
         border-radius: 999px;
         padding: 3px;
