@@ -871,6 +871,25 @@
 .app-user-workspace .app-workspace-sidebar-nav.is-collapsed .app-workspace-nav-link.is-collapsed .app-workspace-nav-meta { display: none !important; }
 .app-user-workspace .app-workspace-sidebar-nav.is-collapsed .app-workspace-nav-group { gap: 6px; }
 .app-user-workspace .app-workspace-sidebar-nav.is-collapsed .app-workspace-nav-link { width: 54px !important; padding: 4px 0 !important; }
+/* 折叠与展开之间，导航项的宽度和图标尺寸原本是瞬间切换的；在侧栏宽度
+   还在过渡的 220ms 里，它们已经跳到终值，看起来就是"内容先跳、容器后到"。
+   让这些几何量共用同一条曲线与时长，视觉上才会一起走。 */
+.app-user-workspace .app-workspace-sidebar-nav .app-workspace-nav-link {
+    transition:
+        background var(--product-state) var(--product-ease),
+        color var(--product-state) var(--product-ease),
+        width var(--sidebar-motion),
+        padding var(--sidebar-motion);
+}
+.app-user-workspace .app-workspace-sidebar-nav .app-workspace-nav-icon {
+    transition:
+        width var(--sidebar-motion),
+        height var(--sidebar-motion),
+        flex-basis var(--sidebar-motion);
+}
+.app-user-workspace .app-workspace-sidebar-scroll-area {
+    transition: padding var(--sidebar-motion), gap var(--sidebar-motion);
+}
 .app-user-workspace .app-workspace-sidebar-nav.is-collapsed .app-workspace-nav-main { width: 100%; align-items: center; justify-content: center; }
 .app-user-workspace .app-workspace-sidebar-nav.is-collapsed .app-workspace-nav-icon { width: 24px; height: 24px; flex-basis: 24px; }
 .app-user-workspace .app-workspace-sidebar-nav.is-collapsed .app-workspace-nav-link .app-workspace-nav-icon svg,
