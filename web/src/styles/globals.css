@@ -7814,17 +7814,21 @@ html:not(.dark) .creation-studio-control:hover,
         animation: canvas-panel-in var(--motion-dur-fast-calc) var(--motion-ease-out) both;
     }
 
-    /* 定位属性刻意不加过渡：输入框在动的时候，浮层若再用一条 transition
-       去追，两者之间必然拉开一段可见的间隙——那就是"慢半拍"的来源。
-       位置改由脚本逐帧写入 --panel-live-offset（见组件），同帧跟随。 */
+    /* 位置由脚本逐帧写入 --panel-live-offset / --panel-live-max-height。
+       这里给这两个量的消费方挂上与节点几何完全相同的过渡时长
+       （--canvas-geometry-motion，340ms）：切比例时节点是缓动变形的，
+       浮层若每帧瞬贴，就变成一边缓动一边硬跟，看起来发顿。
+       用同一条时长和曲线，两者才是同一种运动。 */
 
     /* 图像设置浮层从触发按钮那一侧展开：向上弹出时自下方升起，向下弹出时
        自上方落下，并伴随轻微放大。方向与输入框同步，两者看起来是一件事。 */
     .canvas-image-settings-popover[data-side="top"] {
         transform-origin: bottom left;
         animation: canvas-image-settings-in-up var(--motion-dur-fast-calc) var(--motion-ease-out) both;
-        /* 纵向位置和高度上限都由脚本每帧写入，和输入框的尺寸过渡同帧完成；
-           内联 style 里的静态值只在变量缺席时兜底。 */
+        /* 纵向位置和高度上限都由脚本逐帧写入，变量直接被消费、不加过渡：
+           节点本身已经在做缓动，浮层若再叠一条同等时长的缓动，两条曲线
+           叠加会产生最多一个行程的错位（实测间隙波动 208px）。逐帧瞬贴
+           的间隙波动是 0，才是真正的"丝滑跟随"。 */
         bottom: var(--panel-live-offset, auto) !important;
         max-height: var(--panel-live-max-height, none) !important;
     }

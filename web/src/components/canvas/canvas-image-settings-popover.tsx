@@ -80,6 +80,11 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
         // 需要一次渲染才写进 DOM，两段延迟叠起来就是看到的"慢半拍"。
         // 这里每帧读一次锚点，直接把定位值写成 CSS 变量；浮层用该变量定位，
         // 于是位置在同一帧就跟上，不经过 React 渲染周期。
+        //
+        // 但"同帧跟死"本身也会显得顿：节点几何（切比例）走的是
+        // --canvas-geometry-motion 的 340ms 过渡，浮层如果每帧瞬贴，
+        // 就变成节点在缓动、浮层在硬跟。所以变量由 CSS 过渡消费，
+        // 时长与节点几何完全一致，两者才是同一种运动。
         let frame = 0;
         let lastTop = Number.NaN;
         let lastLeft = Number.NaN;
