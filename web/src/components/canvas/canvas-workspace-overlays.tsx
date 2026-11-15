@@ -170,6 +170,7 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
         const resizeObserver = new ResizeObserver(() => {
             const nextSize = { width: container.clientWidth, height: container.clientHeight };
             if (nextSize.width === viewportSize.width && nextSize.height === viewportSize.height) return;
+
             viewportSize = nextSize;
             // Viewport resize is a discrete layout change: land on the clamped
             // position immediately, then allow the next node resize to animate.
