@@ -545,5 +545,5 @@ func fileSHA256AndSize(path string) (string, int64, error) {
 }
 
 func artifactFileName(version, platform string) string {
-	return fmt.Sprintf("BeefTV-%s-%s.zip", version, platform)
+	return fmt.Sprintf("Zzzc-%s-%s.zip", version, platform)
 }

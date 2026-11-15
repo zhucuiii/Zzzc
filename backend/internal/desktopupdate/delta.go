@@ -48,7 +48,7 @@ type DeltaEntry struct {
 }
 
 func DeltaArtifactFileName(version, platform, fromVersion string) string {
-	return fmt.Sprintf("BeefTV-%s-%s-from-%s.delta.zip", version, platform, fromVersion)
+	return fmt.Sprintf("Zzzc-%s-%s-from-%s.delta.zip", version, platform, fromVersion)
 }
 
 func targetInstallContainer(targetPath, platform string) (string, string, error) {
