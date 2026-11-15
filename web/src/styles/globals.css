@@ -7814,9 +7814,17 @@ html:not(.dark) .creation-studio-control:hover,
         animation: canvas-panel-in var(--motion-dur-fast-calc) var(--motion-ease-out) both;
     }
 
-    /* 定位属性故意不加过渡：输入框改尺寸时自己在动，浮层如果再用一条
-       transition 去追，两者之间必然拉开一段间隙。位置改为逐帧直接同步，
-       零延迟贴合。入场动画仍由下面的 keyframes 负责。 */
+    /* 输入框改尺寸（展开/收起、切比例）时会做自己的高度过渡，浮层的位置
+       又是按触发按钮实时算的。给定位属性同一条过渡，浮层才会跟着输入框
+       一起平移，而不是先停在旧位置再瞬间跳过去。
+       只过渡几何量，入场动画仍由下面的 keyframes 负责。 */
+    .canvas-image-settings-popover {
+        transition:
+            top var(--motion-dur-fast-calc) var(--motion-ease-out),
+            bottom var(--motion-dur-fast-calc) var(--motion-ease-out),
+            left var(--motion-dur-fast-calc) var(--motion-ease-out),
+            max-height var(--motion-dur-fast-calc) var(--motion-ease-out);
+    }
 
     /* 图像设置浮层从触发按钮那一侧展开：向上弹出时自下方升起，向下弹出时
        自上方落下，并伴随轻微放大。方向与输入框同步，两者看起来是一件事。 */
