@@ -47,7 +47,12 @@ func swapBundle(req HelperRequest, name string) error {
 
 func swapWindows(req HelperRequest) error {
 	targetDir := filepath.Dir(req.TargetPath)
-	stagedExe := filepath.Join(req.StagedPath, windowsExeName)
+	// 取包里与"当前正在运行的主程序"同名的那个：新版用 Zzzc.exe，
+	// 仍以 BeefTV.exe 运行的旧版取兼容副本，替换后才不会名字对不上。
+	stagedExe := filepath.Join(req.StagedPath, filepath.Base(req.TargetPath))
+	if !pathExists(stagedExe) {
+		stagedExe = filepath.Join(req.StagedPath, windowsExeName)
+	}
 	if err := validateWindowsLayout(req.StagedPath); err != nil {
 		return err
 	}

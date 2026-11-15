@@ -500,6 +500,12 @@ if (-not (Test-Path -LiteralPath $cliPath -PathType Leaf)) {
     throw "beeftv CLI was not built next to $exePath"
 }
 
+# 改名过渡期的兼容副本：仍以 BeefTV.exe 运行的旧版更新器只认这个名字，
+# 包里不放一份就无法完成"最后一次"旧名升级。新版启动用 Zzzc.exe。
+$legacyExePath = Join-Path $binDir "BeefTV.exe"
+Copy-Item -LiteralPath $exePath -Destination $legacyExePath -Force
+Write-Step "Added legacy-name copy for the rename transition: $legacyExePath"
+
 Write-Host "Release executable: $exePath"
 Write-Host "Bundled agent CLI: $cliPath"
 Write-Host "Official plugins: $pluginResourceDir ($($copied.Count) packages)"

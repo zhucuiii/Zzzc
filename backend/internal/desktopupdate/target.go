@@ -78,7 +78,8 @@ func locateDarwin(platform, executable string) (Target, error) {
 }
 
 func locateWindows(platform, executable string) (Target, error) {
-	if !strings.EqualFold(filepath.Base(executable), windowsExeName) {
+	// 过渡期旧版仍以 BeefTV.exe 运行，也要能被识别，否则老用户永远升不上来。
+	if !isWindowsAppExecutable(filepath.Base(executable)) {
 		return Target{}, fmt.Errorf("当前运行方式不支持自动安装更新")
 	}
 	info, err := os.Lstat(executable)

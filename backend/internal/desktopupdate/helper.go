@@ -178,7 +178,8 @@ func validateHelperRequest(req HelperRequest) error {
 			return fmt.Errorf("当前应用包名称不支持自动更新")
 		}
 	case strings.HasPrefix(req.Platform, "windows"):
-		if filepath.Base(req.TargetPath) != windowsExeName {
+		// 过渡期允许旧名 BeefTV.exe：这些用户正处在改名后的第一次升级。
+		if !isWindowsAppExecutable(filepath.Base(req.TargetPath)) {
 			return fmt.Errorf("当前应用名称不支持自动更新")
 		}
 	case req.Platform == "linux-amd64":

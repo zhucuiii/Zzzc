@@ -108,7 +108,12 @@ func validateWindowsLayout(root string) error {
 	if err := validateAgentHost(filepath.Join(root, "agent-host"), "runtime/node.exe", false); err != nil {
 		return err
 	}
+	// 主程序按新名查找，但过渡期安装包会同时带一个旧名副本，
+	// 供仍以 BeefTV.exe 运行的旧版更新器识别并完成这次升级。
 	exe := filepath.Join(root, windowsExeName)
+	if _, statErr := os.Lstat(exe); os.IsNotExist(statErr) {
+		exe = filepath.Join(root, windowsLegacyExeName)
+	}
 	// Nest new media in agent-host so old helpers replace it with that sidecar.
 	// Accept the earlier standalone layout too, but require complete resources.
 	for _, media := range []string{filepath.Join(root, "agent-host", "media-runtime"), filepath.Join(root, "media-runtime")} {
@@ -123,7 +128,7 @@ func validateWindowsLayout(root string) error {
 		}
 	}
 	if err := requireRegularFile(exe, false); err != nil {
-		return fmt.Errorf("更新包缺少 BeefTV.exe")
+		return fmt.Errorf("更新包缺少 %s", windowsExeName)
 	}
 	if err := requireRegularFile(filepath.Join(root, cliDirName, windowsCLIName), false); err != nil {
 		return fmt.Errorf("更新包缺少随包 beeftv CLI: %w", err)
@@ -153,7 +158,8 @@ func validateWindowsLayout(root string) error {
 		return fmt.Errorf("更新包缺少官方插件")
 	}
 	return walkAllowed(root, func(rel string, entry fs.DirEntry) error {
-		if rel == "." || rel == windowsExeName {
+		// 新旧两个主程序名都放行：过渡期安装包同时带一份旧名副本。
+		if rel == "." || rel == windowsExeName || rel == windowsLegacyExeName {
 			return nil
 		}
 		if rel == cliDirName || strings.HasPrefix(rel, cliDirName+string(filepath.Separator)) {

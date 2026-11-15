@@ -25,8 +25,12 @@ const (
 	helperFlag      = "--beeftv-update-helper"
 	appBundleName   = "BeefTV.app"
 	linuxBundleName = "BeefTV-linux"
-	windowsExeName  = "BeefTV.exe"
-	pluginDirName   = "plugin-packages"
+	// 产品名为 Zzzc；主程序随之改名。
+	windowsExeName = "Zzzc.exe"
+	// 改名过渡期的兼容名：还装着旧 BeefTV.exe 的用户，其更新器只认这个名字。
+	// 安装包会同时带上它，让升级链不断；新装用户只会看到 Zzzc.exe。
+	windowsLegacyExeName = "BeefTV.exe"
+	pluginDirName        = "plugin-packages"
 	// 随包 CLI：外部 Agent 的接入入口，升级包里必须带上，否则升级一次就断了接入。
 	// 它必须待在自己的 cli 目录里：macOS 与 Windows 的文件名都不分大小写，
 	// beeftv 直接放在主程序旁边会和 BeefTV / BeefTV.exe 撞成同一个文件。
@@ -215,4 +219,10 @@ func orderArtifactURLs(urls []string, preferDomestic bool) []string {
 		}
 	}
 	return append(primary, secondary...)
+}
+
+// isWindowsAppExecutable 判断某个文件名是否是本应用的主程序。
+// 同时接受新名与旧名：旧版仍以 BeefTV.exe 运行，升级过渡期需要被识别。
+func isWindowsAppExecutable(name string) bool {
+	return strings.EqualFold(name, windowsExeName) || strings.EqualFold(name, windowsLegacyExeName)
 }

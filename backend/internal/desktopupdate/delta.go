@@ -68,7 +68,8 @@ func targetInstallContainer(targetPath, platform string) (string, string, error)
 		}
 		return filepath.Dir(absTarget), absTarget, nil
 	case platform == "windows-amd64":
-		if !strings.EqualFold(filepath.Base(absTarget), windowsExeName) {
+		// 旧版以 BeefTV.exe 运行，新版以 Zzzc.exe 运行，两者都是合法目标。
+		if !isWindowsAppExecutable(filepath.Base(absTarget)) {
 			return "", "", fmt.Errorf("invalid Windows target path")
 		}
 		dir := filepath.Dir(absTarget)
@@ -85,7 +86,12 @@ func extractedTargetPath(extractedRoot, platform string) (string, error) {
 	case platform == "linux-amd64":
 		return filepath.Join(extractedRoot, linuxBundleName), nil
 	case platform == "windows-amd64":
-		return filepath.Join(extractedRoot, windowsExeName), nil
+		// 包里以新名为主；过渡期的兼容包里两份都在，优先取新名。
+		next := filepath.Join(extractedRoot, windowsExeName)
+		if _, err := os.Lstat(next); err == nil {
+			return next, nil
+		}
+		return filepath.Join(extractedRoot, windowsLegacyExeName), nil
 	default:
 		return "", ErrUnsupported
 	}
@@ -440,4 +446,3 @@ func verifyReconstructedMatchesArchive(reconstructed string, expected []zipEntry
 	}
 	return nil
 }
-
