@@ -873,8 +873,14 @@
 .app-user-workspace .app-workspace-sidebar-nav.is-collapsed .app-workspace-nav-link { width: 54px !important; padding: 4px 0 !important; }
 /* 折叠与展开之间，导航项的宽度和图标尺寸原本是瞬间切换的；在侧栏宽度
    还在过渡的 220ms 里，它们已经跳到终值，看起来就是"内容先跳、容器后到"。
-   让这些几何量共用同一条曲线与时长，视觉上才会一起走。 */
+   让这些几何量共用同一条曲线与时长，视觉上才会一起走。
+
+   宽度必须写成可插值的确定值：折叠态是 54px，展开态若交给容器推导
+   （auto/100%），浏览器在切换首帧会先算出一个中间值再插值，表现为
+   收起瞬间从 212 直接塌到 40 —— 就是用户看到的"最后卡一下"。
+   这里把展开态也写成计算值，两端都确定，过渡才连续。 */
 .app-user-workspace .app-workspace-sidebar-nav .app-workspace-nav-link {
+    width: calc(var(--workspace-reference-sidebar) - 28px);
     transition:
         background var(--product-state) var(--product-ease),
         color var(--product-state) var(--product-ease),

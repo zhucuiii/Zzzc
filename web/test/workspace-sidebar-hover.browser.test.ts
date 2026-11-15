@@ -244,6 +244,46 @@ test("占位槽始终与真实侧栏等宽：固定展开不产生间隙跳变",
     }
 });
 
+test("收起时导航项宽度连续变化，不出现首帧塌陷", async () => {
+    const page = await newShellPage();
+    try {
+        // 展开到稳态
+        await page.evaluate(() => (window as any).__sidebarHoverProbe.collapse());
+        await page.waitForTimeout(400);
+        await page.mouse.move(30, 450);
+        await page.waitForTimeout(600);
+
+        // 逐帧记录菜单项宽度
+        await page.evaluate(() => {
+            (window as any).__widths = [];
+            const link = document.querySelector('.app-workspace-nav-link[data-nav-id="home"]')!;
+            const started = performance.now();
+            const tick = () => {
+                (window as any).__widths.push(Math.round(link.getBoundingClientRect().width * 10) / 10);
+                if (performance.now() - started < 450) requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+        });
+        await page.mouse.move(900, 450);
+        await page.waitForTimeout(550);
+
+        const widths: number[] = await page.evaluate(() => (window as any).__widths);
+        const distinct = widths.filter((w, i) => i === 0 || w !== widths[i - 1]);
+        expect(distinct.length).toBeGreaterThan(4);
+        // 相邻有效帧之间不得出现「塌陷再回升」：塌陷的典型特征是某一帧
+        // 显著低于过渡终点，随后又变大（百分比宽度无法插值时的表现）。
+        const collapsedEnd = distinct[distinct.length - 1];
+        const belowEnd = distinct.slice(0, -1).filter((w) => w < collapsedEnd - 1);
+        expect(belowEnd).toEqual([]);
+        // 首帧跳变不超过总行程的一半
+        const totalTravel = distinct[0] - collapsedEnd;
+        const firstStep = Math.abs(distinct[1] - distinct[0]);
+        expect(firstStep).toBeLessThan(totalTravel * 0.5);
+    } finally {
+        await page.close();
+    }
+});
+
 test("折叠态导航图标在胶囊内垂直居中且不被裁切", async () => {
     const page = await newShellPage();
     try {
