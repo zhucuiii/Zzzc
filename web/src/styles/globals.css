@@ -1762,13 +1762,18 @@
         box-shadow: none;
     }
 
+    /* 占位槽不自己算宽度，改为跟随真实侧栏的内容尺寸。
+       侧栏宽度由多条 !important 规则（含写死像素的产品样式）决定，
+       任何按变量推算的占位都会在某些视口下差出一截，点“固定”时
+       表现为中间间隙突然变大。让占位跟着内容走，永远同步。 */
     .app-workspace-sidebar-slot {
-        width: var(--workspace-sidebar-width, 208px);
+        width: auto;
+        flex: 0 0 auto;
         transition: width 280ms var(--ease-aceternity);
     }
 
     .app-workspace-sidebar-slot.is-collapsed {
-        width: var(--workspace-sidebar-collapsed-width);
+        width: auto;
     }
 
     .app-workspace-sidebar {
@@ -1788,9 +1793,8 @@
         width: var(--workspace-reference-sidebar, var(--workspace-sidebar-width, 208px)) !important;
     }
 
-    .app-workspace-sidebar-slot.is-hover-preview {
-        width: var(--workspace-reference-sidebar, var(--workspace-sidebar-width, 208px));
-    }
+    /* 占位槽跟随内容尺寸（见上方规则），悬停预览不需要单独的宽度声明：
+       给了反而在 reference-sidebar 与实际宽度不一致的视口下撑出空隙。 */
 
     @media (prefers-reduced-motion: reduce) {
         .app-workspace-sidebar,

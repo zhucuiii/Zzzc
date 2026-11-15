@@ -206,6 +206,44 @@ test("快速反复进出：最终回到折叠宽，无残留状态", async () =>
     }
 });
 
+test("占位槽始终与真实侧栏等宽：固定展开不产生间隙跳变", async () => {
+    const page = await newShellPage();
+    try {
+        const read = () => page.evaluate(() => {
+            const slot = document.querySelector(".app-workspace-sidebar-slot")!;
+            const rail = document.querySelector(".app-workspace-sidebar")!;
+            return {
+                slot: Math.round(slot.getBoundingClientRect().width),
+                rail: Math.round(rail.getBoundingClientRect().width),
+            };
+        });
+
+        // 收起 → 悬停预览 → 点固定；全程占位槽都应与侧栏同宽
+        await page.evaluate(() => (window as any).__sidebarHoverProbe.collapse());
+        await wait(500);
+        expect(Math.abs((await read()).slot - (await read()).rail)).toBeLessThanOrEqual(1);
+
+        await page.mouse.move(30, 450);
+        await wait(550);
+        const hoverState = await read();
+        expect(Math.abs(hoverState.slot - hoverState.rail)).toBeLessThanOrEqual(1);
+
+        // 点图钉固定，逐帧确认没有“间隙突然变大”
+        await page.evaluate(() => document.querySelector(".app-workspace-sidebar-collapse-button")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+        for (let i = 0; i < 8; i++) {
+            const frame = await read();
+            expect(Math.abs(frame.slot - frame.rail)).toBeLessThanOrEqual(1);
+            await wait(45);
+        }
+        await page.mouse.move(900, 450);
+        await wait(600);
+        const settled = await read();
+        expect(Math.abs(settled.slot - settled.rail)).toBeLessThanOrEqual(1);
+    } finally {
+        await page.close();
+    }
+});
+
 test("折叠态 footer 图标共用一条垂直中线", async () => {
     const page = await newShellPage();
     try {
