@@ -105,12 +105,9 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
                     ? `${window.innerHeight - box.top + 8}px`
                     : `${box.bottom + 8}px`,
             );
-            // 高度上限同样依赖锚点位置。只同步位置而让它走 React 渲染，
-            // 会出现"位置一直在动、可用高度却隔几帧跳一次"的顿感。
-            panel.style.setProperty(
-                "--panel-live-max-height",
-                `${Math.max(260, topPlacement ? box.top - 24 : window.innerHeight - box.bottom - 24)}px`,
-            );
+            // 注意：这里不再逐帧更新高度上限。内容高度贴着上限时，上限每帧
+            // 变动会让浮层自身高度跟着抖，产生肉眼可见的顿挫；而位置跟随
+            // 已经足够，高度交给打开时确定的上限即可。
         };
         frame = requestAnimationFrame(track);
 

@@ -7814,11 +7814,10 @@ html:not(.dark) .creation-studio-control:hover,
         animation: canvas-panel-in var(--motion-dur-fast-calc) var(--motion-ease-out) both;
     }
 
-    /* 位置由脚本逐帧写入 --panel-live-offset / --panel-live-max-height。
-       这里给这两个量的消费方挂上与节点几何完全相同的过渡时长
-       （--canvas-geometry-motion，340ms）：切比例时节点是缓动变形的，
-       浮层若每帧瞬贴，就变成一边缓动一边硬跟，看起来发顿。
-       用同一条时长和曲线，两者才是同一种运动。 */
+    /* 纵向位置由脚本逐帧写入 --panel-live-offset，变量直接被消费、不加过渡：
+       节点本身已在做缓动，浮层再叠一条同等时长的曲线会互相追赶，实测间隙
+       波动可达 208px。逐帧瞬贴的波动是 0，才是真正的贴合。
+       高度上限不参与逐帧同步——它每帧变动会让浮层自身高度抖动。 */
 
     /* 图像设置浮层从触发按钮那一侧展开：向上弹出时自下方升起，向下弹出时
        自上方落下，并伴随轻微放大。方向与输入框同步，两者看起来是一件事。 */
@@ -7830,14 +7829,12 @@ html:not(.dark) .creation-studio-control:hover,
            叠加会产生最多一个行程的错位（实测间隙波动 208px）。逐帧瞬贴
            的间隙波动是 0，才是真正的"丝滑跟随"。 */
         bottom: var(--panel-live-offset, auto) !important;
-        max-height: var(--panel-live-max-height, none) !important;
     }
 
     .canvas-image-settings-popover[data-side="bottom"] {
         transform-origin: top left;
         animation: canvas-image-settings-in-down var(--motion-dur-fast-calc) var(--motion-ease-out) both;
         top: var(--panel-live-offset, auto) !important;
-        max-height: var(--panel-live-max-height, none) !important;
     }
 
     @keyframes canvas-image-settings-in-up {
