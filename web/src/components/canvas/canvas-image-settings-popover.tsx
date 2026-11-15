@@ -81,21 +81,30 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
         // 这里每帧读一次锚点，直接把定位值写成 CSS 变量；浮层用该变量定位，
         // 于是位置在同一帧就跟上，不经过 React 渲染周期。
         let frame = 0;
-        let lastKey = "";
+        let lastTop = Number.NaN;
+        let lastLeft = Number.NaN;
         const track = () => {
             frame = requestAnimationFrame(track);
             const panel = panelRef.current;
             const box = buttonRef.current?.getBoundingClientRect();
             if (!panel || !box) return;
-            const key = `${Math.round(box.top * 2)}|${Math.round(box.left * 2)}`;
-            if (key === lastKey) return;
-            lastKey = key;
+            // 用浮点比较而非取整成 key：取整会把位移量化，慢速过渡时
+            // 浮层要等位移动满一格才更新一次，表现为一顿一顿地追。
+            if (box.top === lastTop && box.left === lastLeft) return;
+            lastTop = box.top;
+            lastLeft = box.left;
             const topPlacement = placement?.startsWith("top");
             panel.style.setProperty(
                 "--panel-live-offset",
                 topPlacement
                     ? `${window.innerHeight - box.top + 8}px`
                     : `${box.bottom + 8}px`,
+            );
+            // 高度上限同样依赖锚点位置。只同步位置而让它走 React 渲染，
+            // 会出现"位置一直在动、可用高度却隔几帧跳一次"的顿感。
+            panel.style.setProperty(
+                "--panel-live-max-height",
+                `${Math.max(260, topPlacement ? box.top - 24 : window.innerHeight - box.bottom - 24)}px`,
             );
         };
         frame = requestAnimationFrame(track);

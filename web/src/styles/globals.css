@@ -7823,15 +7823,17 @@ html:not(.dark) .creation-studio-control:hover,
     .canvas-image-settings-popover[data-side="top"] {
         transform-origin: bottom left;
         animation: canvas-image-settings-in-up var(--motion-dur-fast-calc) var(--motion-ease-out) both;
-        /* 纵向位置由脚本每帧写入的 --panel-live-offset 决定，和输入框的
-           尺寸过渡同帧完成；内联 style 里的 static 值只在变量缺席时兜底。 */
+        /* 纵向位置和高度上限都由脚本每帧写入，和输入框的尺寸过渡同帧完成；
+           内联 style 里的静态值只在变量缺席时兜底。 */
         bottom: var(--panel-live-offset, auto) !important;
+        max-height: var(--panel-live-max-height, none) !important;
     }
 
     .canvas-image-settings-popover[data-side="bottom"] {
         transform-origin: top left;
         animation: canvas-image-settings-in-down var(--motion-dur-fast-calc) var(--motion-ease-out) both;
         top: var(--panel-live-offset, auto) !important;
+        max-height: var(--panel-live-max-height, none) !important;
     }
 
     @keyframes canvas-image-settings-in-up {
