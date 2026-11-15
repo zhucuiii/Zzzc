@@ -76,13 +76,38 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
             observer.observe(trigger);
         }
 
+        // 逐帧跟随：ResizeObserver 只在尺寸变化"落定"时报一次，加上 React
+        // 需要一次渲染才写进 DOM，两段延迟叠起来就是看到的"慢半拍"。
+        // 这里每帧读一次锚点，直接把定位值写成 CSS 变量；浮层用该变量定位，
+        // 于是位置在同一帧就跟上，不经过 React 渲染周期。
+        let frame = 0;
+        let lastKey = "";
+        const track = () => {
+            frame = requestAnimationFrame(track);
+            const panel = panelRef.current;
+            const box = buttonRef.current?.getBoundingClientRect();
+            if (!panel || !box) return;
+            const key = `${Math.round(box.top * 2)}|${Math.round(box.left * 2)}`;
+            if (key === lastKey) return;
+            lastKey = key;
+            const topPlacement = placement?.startsWith("top");
+            panel.style.setProperty(
+                "--panel-live-offset",
+                topPlacement
+                    ? `${window.innerHeight - box.top + 8}px`
+                    : `${box.bottom + 8}px`,
+            );
+        };
+        frame = requestAnimationFrame(track);
+
         return () => {
+            cancelAnimationFrame(frame);
             window.removeEventListener("resize", syncPosition);
             window.removeEventListener("scroll", syncPosition, true);
             window.removeEventListener("pointerdown", closeOnOutsidePointer, true);
             observer?.disconnect();
         };
-    }, [onOpenChange, open]);
+    }, [onOpenChange, open, placement]);
 
     const panel = open && buttonRect ? <ImageSettingsPortal layer={canvasPopoverLayer(buttonRef.current)} buttonRect={buttonRect} panelRef={panelRef} placement={placement} theme={theme} config={config} showCount={showCount} onConfigChange={onConfigChange} /> : null;
 
