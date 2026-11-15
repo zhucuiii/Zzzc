@@ -133,6 +133,8 @@ function ImageSettingsPortal({
     return createPortal(
         <div
             ref={panelRef}
+            // 入场方向跟随浮层从触发按钮展开的那一侧，动画才和输入框的动作同源。
+            data-side={topPlacement ? "top" : "bottom"}
             className="canvas-image-settings-popover aceternity-floating-panel backdrop-blur-2xl"
             style={style}
             onPointerDown={(event) => event.stopPropagation()}

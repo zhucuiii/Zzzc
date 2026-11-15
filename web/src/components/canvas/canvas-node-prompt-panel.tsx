@@ -106,6 +106,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
     const [presetOpen, setPresetOpen] = useState(false);
     const [expandedPresetOpen, setExpandedPresetOpen] = useState(false);
     const [expandedPromptOpen, setExpandedPromptOpen] = useState(false);
+    const [imageSettingsOpen, setImageSettingsOpen] = useState(false);
     const [expandedModalRendered, setExpandedModalRendered] = useState(false);
     const [expandedModalSize, setExpandedModalSize] = useState<{ width: number; height: number } | null>(null);
     const expandedModalRef = useRef<HTMLDivElement>(null);
@@ -551,7 +552,10 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                                     onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : { [key]: value });
                                 }}
                                 onMissingConfig={() => navigateToSettings({ continueCreation: true })}
-                                onOpenChange={expanded ? undefined : onImageSettingsOpenChange}
+                                onOpenChange={(open) => {
+                                    setImageSettingsOpen(open);
+                                    if (!expanded) onImageSettingsOpenChange?.(open);
+                                }}
                             />
                         </>
                     ) : mode === "video" ? (
@@ -731,6 +735,8 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
         >
             <div
                 className="canvas-node-composer canvas-node-composer--libtv"
+                // 图像设置浮层开着时给输入框一个联动标记：面板升起，输入框同步沉一下。
+                data-image-settings-open={imageSettingsOpen ? "true" : undefined}
                 style={composerSurfaceStyle}
                 onMouseDown={(event) => event.stopPropagation()}
                 onPointerDown={(event) => event.stopPropagation()}

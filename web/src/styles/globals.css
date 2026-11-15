@@ -7814,6 +7814,49 @@ html:not(.dark) .creation-studio-control:hover,
         animation: canvas-panel-in var(--motion-dur-fast-calc) var(--motion-ease-out) both;
     }
 
+    /* 图像设置浮层从触发按钮那一侧展开：向上弹出时自下方升起，向下弹出时
+       自上方落下，并伴随轻微放大。方向与输入框同步，两者看起来是一件事。 */
+    .canvas-image-settings-popover[data-side="top"] {
+        transform-origin: bottom left;
+        animation: canvas-image-settings-in-up var(--motion-dur-fast-calc) var(--motion-ease-out) both;
+    }
+
+    .canvas-image-settings-popover[data-side="bottom"] {
+        transform-origin: top left;
+        animation: canvas-image-settings-in-down var(--motion-dur-fast-calc) var(--motion-ease-out) both;
+    }
+
+    @keyframes canvas-image-settings-in-up {
+        from {
+            opacity: 0;
+            transform: translateY(10px) scale(0.97);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+
+    @keyframes canvas-image-settings-in-down {
+        from {
+            opacity: 0;
+            transform: translateY(-10px) scale(0.97);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .canvas-image-settings-popover[data-side="top"],
+        .canvas-image-settings-popover[data-side="bottom"] {
+            animation: none;
+        }
+    }
+
     /* LibTV keeps the primary bottom dock reachable above expanded node panels. */
 .canvas-main-toolbar {
         z-index: calc(var(--z-canvas-overlay-active) + 10) !important;
@@ -9012,6 +9055,26 @@ html:not(.dark) .creation-studio-control:hover,
        controls read as one low-profile panel below the node. */
     .canvas-node-composer--libtv {
         padding: 10px 12px 8px;
+    }
+
+    /* 图像设置浮层展开时，输入框同步轻微下沉：两者用同一条曲线与时长，
+       看起来是同一个动作的两个部分，而不是各动各的。 */
+    .canvas-node-composer {
+        transition: transform var(--motion-dur-fast-calc) var(--motion-ease-out);
+    }
+
+    .canvas-node-composer[data-image-settings-open="true"] {
+        transform: translateY(2px);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .canvas-node-composer {
+            transition: none;
+        }
+
+        .canvas-node-composer[data-image-settings-open="true"] {
+            transform: none;
+        }
     }
 
     .canvas-node-composer--libtv > .canvas-node-composer-header {
