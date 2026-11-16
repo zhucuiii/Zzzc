@@ -124,7 +124,7 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
         let liveDragOffset = dragOffsetRef.current;
         let viewportSize = { width: container.clientWidth, height: container.clientHeight };
         let disposed = false;
-        let transitionEnabled: boolean | undefined;
+        let transitionMode: "none" | "width" | "both" | undefined;
         let suppressTransition = false;
         // 跟随期间面板由逐帧写入驱动，不走 CSS 过渡。
         let following = false;
@@ -142,13 +142,14 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
                 if (followFrame !== null) cancelAnimationFrame(followFrame);
                 followFrame = null;
             }
-            // 跟随期间面板必须逐帧贴住节点，自身不能再跑一条过渡 ——
-            // 每帧写 transform 会不断重启过渡，反而抖。
-            const next = animatedRef.current && !isDragging && !isInteracting() && !suppressTransition && !following;
-            if (next === transitionEnabled) return;
-            transitionEnabled = next;
-            if (next) panel.dataset.panelAnimated = "true";
-            else delete panel.dataset.panelAnimated;
+            const idle = animatedRef.current && !isDragging && !isInteracting() && !suppressTransition;
+            const next = idle ? (following ? "width" : "both") : "none";
+            if (next === transitionMode) return;
+            transitionMode = next;
+            // 跟随期间 transform 由逐帧写入驱动，只让宽度自己走过渡：
+            // 每帧覆盖 transform 等于没有过渡，而宽度若也硬切会看到"缩一下"。
+            if (next === "none") delete panel.dataset.panelAnimated;
+            else panel.dataset.panelAnimated = next === "width" ? "width" : "true";
         };
         // update() 先于 startFollow 定义，用这个中转避免循环依赖。
         let requestFollow: () => void = () => {};
@@ -189,21 +190,28 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
         // 两边走同一条曲线；连续两帧不动就自停，把控制权交回 CSS 过渡。
         let followKey = "";
         let followStillFrames = 0;
+        // 容器在一次过渡里不会移动，缓存它的 rect，免得跟随循环每帧
+        // 多读一次 —— 每帧两次 getBoundingClientRect 会明显掉帧。
+        let cachedContainerRect: DOMRect | null = null;
         // 把面板贴到节点当前所在的位置，返回本帧的 rect 标识。
         const stickToNode = () => {
             const nodeElement = findNodeElement();
             if (!nodeElement) return null;
+            if (!cachedContainerRect) cachedContainerRect = container.getBoundingClientRect();
+            const containerRect = cachedContainerRect;
             const rect = nodeElement.getBoundingClientRect();
-            const nextWidth = resolveNodePanelWidthFromPixels(
-                rect.width / liveViewport.k,
-                liveViewport,
-                panelWidth, panelMinWidth, panelMaxWidth, panelWidthScale,
-            );
-            if (panel.style.width !== `${nextWidth}px`) panel.style.width = `${nextWidth}px`;
-            const position = getAttachedNodePanelPosition(nodeElement, container, nextWidth, panelHeight, keepBelowNode, avoidBottomDock);
-            panel.style.transform = `translate3d(${position.left}px, ${position.top}px, 0)`;
+            // 宽度不逐帧改：面板里内容很多，每帧改宽都会重排整块内容，
+            // 那比读一次 rect 贵得多，正是掉帧的来源。宽度交给同一条
+            // CSS 过渡自己走完，逐帧只负责位置 —— 而位置才是肉眼盯着的东西。
+            // 定位要用当前真实宽度，否则居中会偏；读 panel rect 顺带拿到。
+            const nextWidth = panel.getBoundingClientRect().width;
+            const position = getAttachedNodePanelPosition(nodeElement, container, nextWidth, panelHeight, keepBelowNode, avoidBottomDock, containerRect);
+            const transform = `translate3d(${position.left}px, ${position.top}px, 0)`;
+            if (panel.style.transform !== transform) panel.style.transform = transform;
             return `${rect.left},${rect.top},${rect.width},${rect.height}`;
         };
+        // 容器尺寸变化时让缓存失效（窗口 resize / 侧栏展开）。
+        const refreshContainerRect = () => { cachedContainerRect = null; };
         const runFollowFrame = () => {
             followFrame = null;
             if (disposed || !panel.isConnected) return;
@@ -225,6 +233,8 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
         };
         const startFollow = () => {
             following = true;
+            // 每次新的几何变化都重新取容器位置，避免用到上一轮的旧缓存。
+            cachedContainerRect = null;
             // 当场关掉面板过渡，避免下一帧写入时先重启一次过渡。
             syncPanelTransition();
             if (followFrame !== null) return;
@@ -250,6 +260,7 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
             if (nextSize.width === viewportSize.width && nextSize.height === viewportSize.height) return;
 
             viewportSize = nextSize;
+            refreshContainerRect();
             // Viewport resize is a discrete layout change: land on the clamped
             // position immediately, then allow the next node resize to animate.
             suppressTransition = true;
@@ -446,11 +457,13 @@ function constrainNodePanelPosition(left: number, top: number, viewportSize: { w
     };
 }
 
-function getAttachedNodePanelPosition(nodeElement: HTMLElement, container: HTMLElement, panelWidth: number, panelHeight: number, keepBelowNode = false, avoidBottomDock = false) {
+function getAttachedNodePanelPosition(nodeElement: HTMLElement, container: HTMLElement, panelWidth: number, panelHeight: number, keepBelowNode = false, avoidBottomDock = false, cachedContainerRect?: { left: number; top: number } & { width: number; height: number }) {
     const gap = 16;
     const nodeRect = nodeElement.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
-    const viewportSize = { width: container.clientWidth, height: container.clientHeight };
+    // 跟随循环每帧都会调到这里。容器的位置/尺寸在一次过渡里不会变，
+    // 每次重读等于每帧多一次强制重排 —— 把它交给调用方缓存。
+    const containerRect = cachedContainerRect ?? container.getBoundingClientRect();
+    const viewportSize = { width: containerRect.width || container.clientWidth, height: containerRect.height || container.clientHeight };
     const left = nodeRect.left - containerRect.left + nodeRect.width / 2 - panelWidth / 2;
     const preferredTop = nodeRect.top - containerRect.top;
     const top = nodeRect.bottom - containerRect.top + gap;

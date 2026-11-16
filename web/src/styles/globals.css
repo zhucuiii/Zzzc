@@ -7836,6 +7836,11 @@ html:not(.dark) .creation-studio-control:hover,
         bottom: var(--panel-live-offset, auto) !important;
         /* 横向同样逐帧同步：切比例时按钮横坐标会变，只跟纵向会横向滞后。 */
         left: var(--panel-live-left, auto) !important;
+        /* 高度上限由同一个变量推导，和位置天然一致：浮层从按钮顶边往上长，
+           可用空间就是"按钮顶边到窗口顶部"。写死一个上限会让内容变高时
+           向下溢出、压住下面的输入框；用 calc 让浏览器每帧自己算，
+           既不占主线程，也绝不可能超出可用空间。 */
+        max-height: calc(100vh - var(--panel-live-offset, 0px) - 24px) !important;
     }
 
     .canvas-image-settings-popover[data-side="bottom"] {
@@ -7843,6 +7848,8 @@ html:not(.dark) .creation-studio-control:hover,
         animation: canvas-image-settings-in-down var(--motion-dur-fast-calc) var(--motion-ease-out) both;
         top: var(--panel-live-offset, auto) !important;
         left: var(--panel-live-left, auto) !important;
+        /* 向下弹出时可用空间是"锚点到窗口底部"，同样由变量推导。 */
+        max-height: calc(100vh - var(--panel-live-offset, 0px) - 24px) !important;
     }
 
     @keyframes canvas-image-settings-in-up {
@@ -8968,6 +8975,13 @@ html:not(.dark) .creation-studio-control:hover,
     transition:
         transform var(--canvas-geometry-motion),
         width var(--canvas-geometry-motion);
+}
+
+/* 跟随态：位置由逐帧写入驱动（每帧写 transform 等于没有过渡，留着只会抖），
+   只让宽度自己平滑收敛 —— 面板内容多，改宽要重排，交给浏览器比每帧在
+   JS 里写更省。 */
+[data-canvas-node-panel][data-panel-animated="width"] {
+    transition: width var(--canvas-geometry-motion);
 }
 
 .canvas-node-shell {

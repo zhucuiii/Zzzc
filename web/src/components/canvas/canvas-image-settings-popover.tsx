@@ -75,20 +75,12 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
             onOpenChange?.(false);
         };
 
+        // 打开时取一次锚点，之后不再更新。位置由逐帧 CSS 变量负责，
+        // 高度上限在挂载时锁死；一旦再让 buttonRect 跟着动，跟随过程中
+        // 就会持续 setState —— 这会儿面板里几十个按钮要重建，主线程被
+        // 卡住，而且每次重算的上限都会让浮层高度跳一下。
         syncPosition();
-        window.addEventListener("resize", syncPosition);
-        window.addEventListener("scroll", syncPosition, true);
         window.addEventListener("pointerdown", closeOnOutsidePointer, true);
-
-        // 输入框自己会做尺寸过渡（展开/收起、改比例时高度变化），
-        // 光监听 window resize 收不到，浮层就会停在旧位置。用 ResizeObserver
-        // 跟着触发按钮的盒模型走，浮层才能始终贴着它一起动。
-        const trigger = buttonRef.current;
-        let observer: ResizeObserver | undefined;
-        if (trigger && typeof ResizeObserver !== "undefined") {
-            observer = new ResizeObserver(syncPosition);
-            observer.observe(trigger);
-        }
 
         // 逐帧跟随：ResizeObserver 只在尺寸变化"落定"时报一次，加上 React
         // 需要一次渲染才写进 DOM，两段延迟叠起来就是看到的"慢半拍"。
@@ -119,6 +111,7 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
                     ? `${window.innerHeight - box.top + 8}px`
                     : `${box.bottom + 8}px`,
             );
+
             // 横向也要逐帧跟：切比例时触发按钮会随节点宽度改变横坐标，
             // 只同步纵向会让浮层在水平方向滞后于按钮，看起来就是"滑一下才到"。
             // 宽度取面板自身定值（420 或窗口可用宽），不读 offsetWidth ——
@@ -132,10 +125,7 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
 
         return () => {
             cancelAnimationFrame(frame);
-            window.removeEventListener("resize", syncPosition);
-            window.removeEventListener("scroll", syncPosition, true);
             window.removeEventListener("pointerdown", closeOnOutsidePointer, true);
-            observer?.disconnect();
         };
     }, [onOpenChange, open, placement]);
 
@@ -182,12 +172,18 @@ function ImageSettingsPortal({
     const alignCenter = placement === "top" || placement === "bottom";
     const left = alignCenter ? buttonRect.left + buttonRect.width / 2 - width / 2 : alignRight ? buttonRect.right - width : buttonRect.left;
     const topPlacement = placement?.startsWith("top");
+    // 位置只由 CSS 变量（--panel-live-left / --panel-live-offset）驱动。
+    // 早先这里也写了一份 left/bottom，结果是两个写入源打架：React 每次
+    // 重渲染都把位置打回上一次算出的旧值，下一帧 rAF 再把它拉回新值，
+    // 看起来就是"切比例时浮层顿一下"。这里只保留尺寸与外观，
+    // 首帧的落位交给下面两个变量的初始值。
+    // 高度上限完全交给 CSS：它由 --panel-live-offset 推导，和位置天然一致。
+    // 这里若再写一份内联 max-height，就会盖掉 CSS 的 calc，回到"内容变高
+    // 就向下溢出、压住输入框"的老问题。
     const style = {
         position: "fixed",
         zIndex: layer,
         width,
-        left: Math.max(margin, Math.min(window.innerWidth - width - margin, left)),
-        ...(topPlacement ? { bottom: window.innerHeight - buttonRect.top + gap, maxHeight: Math.max(260, buttonRect.top - margin * 2) } : { top: buttonRect.bottom + gap, maxHeight: Math.max(260, window.innerHeight - buttonRect.bottom - margin * 2) }),
         background: theme.canvas.background,
         border: `1px solid ${theme.toolbar.border}`,
         borderRadius: 10,
@@ -195,6 +191,15 @@ function ImageSettingsPortal({
         padding: 12,
         overflowY: "auto",
         color: theme.node.text,
+        // 挂载当帧 rAF 还没跑，先用此刻的按钮位置兜底，避免出现在 (0,0)。
+        ["--panel-live-left" as string]: `${Math.max(margin, Math.min(window.innerWidth - width - margin, left))}px`,
+        // 两种弹出方向都用 top 定位：向上弹出时由 CSS 用 translateY(-100%)
+        // 把自身整体上移，底边正好落在按钮上方。若改用 bottom 定位，
+        // 浮层一旦比可用空间高就会向下溢出、压住下面的输入框 ——
+        // 而它的高度随内容变化，锁死一个上限也挡不住方向问题。
+        ["--panel-live-offset" as string]: topPlacement
+            ? `${buttonRect.top - gap}px`
+            : `${buttonRect.bottom + gap}px`,
     } as const;
 
     return createPortal(
