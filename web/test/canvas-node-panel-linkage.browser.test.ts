@@ -91,6 +91,13 @@ async function recordFrames(frameCount: number, action?: FrameAction) {
             if (action && action.atFrame === frame && action.kind === "mount") {
                 (window as unknown as { mountPanelHarness?: (host: HTMLElement, options: unknown) => void }).mountPanelHarness?.(document.getElementById("root") as HTMLElement, action.options);
             }
+            // 面板靠 rAF 逐帧贴节点，而 rAF 的回调顺序只由注册先后决定。
+            // 采样若也跑在 rAF 里、又注册在前，就会读到"本帧尚未跟随"的旧值，
+            // 测出的是时序假象而不是用户看到的画面。浏览器在所有 rAF 跑完才
+            // 统一绘制，所以采样放到帧末任务里，量到的才是真正上屏的结果。
+            setTimeout(() => sample(), 0);
+        };
+        const sample = () => {
             const panel = document.querySelector<HTMLElement>("[data-canvas-node-panel]");
             const node = document.querySelector<HTMLElement>('[data-testid="canvas-node"]');
             const box = (element: HTMLElement) => {
@@ -112,13 +119,13 @@ async function recordFrames(frameCount: number, action?: FrameAction) {
                     node: { ...box(node), transitionDuration: getComputedStyle(node).transitionDuration, animations: node.getAnimations().length },
                 }
                 : { frame, hasPanel: false });
-            // Apply geometry changes in a separate task, after this frame's
-            // measurement. Reading layout right after the style mutation would
-            // make the browser resolve the new values before the transition
-            // starts, hiding the very frames this test wants to observe.
+            // Apply geometry changes after this frame's measurement. Reading
+            // layout right after the style mutation would make the browser
+            // resolve the new values before the transition starts, hiding the
+            // very frames this test wants to observe.
             if (action && action.atFrame === frame && action.kind === "patch-ratio") {
                 const api = (window as unknown as { panelHarness?: { patchNode?: (patch: { size: string }) => void } }).panelHarness;
-                setTimeout(() => api?.patchNode?.({ size: action.size }), 0);
+                api?.patchNode?.({ size: action.size });
             }
             frame += 1;
             if (frame >= frameCount) resolve(samples);
@@ -220,12 +227,13 @@ describe("canvas node panel linkage", () => {
         }
 
         const measurement = await measure();
-        // The node uses the product class that carries the 340ms geometry transition.
+        // The node uses the product class that carries the geometry transition.
         expect(measurement.productionStyle.nodeClassName).toContain("node-element");
-        expect(measurement.productionStyle.nodeTransitionDuration).toBe("0.34s, 0.34s, 0.34s");
+        // 节点比面板多一条 height，前三者的时长必须与面板完全一致。
+        expect(measurement.productionStyle.nodeTransitionDuration.startsWith(measurement.productionStyle.transitionDuration)).toBe(true);
         // The panel only animates after its first paint.
         expect(measurement.productionStyle.animated).toBe(true);
-        expect(measurement.productionStyle.transitionDuration).toBe("0.34s, 0.34s");
+        expect(measurement.productionStyle.transitionDuration).toBe("0.26s, 0.26s");
         expect(measurement.productionStyle.animations).toBe(0);
         // These values only exist in src/styles/globals.css; the harness page
         // supplies no layout CSS of its own.
@@ -237,7 +245,7 @@ describe("canvas node panel linkage", () => {
 
     test("switching the node ratio animates several frames while node and panel stay attached", async () => {
         await mountHarness();
-        // Patch early, then sample through the 340ms geometry transition.
+        // Patch early, then sample through the geometry transition.
         const samples = await recordFrames(40, { atFrame: 2, kind: "patch-ratio", size: "1:1" });
 
         const panelFrames = samples.filter((sample) => sample.hasPanel);
@@ -250,12 +258,16 @@ describe("canvas node panel linkage", () => {
         // At least one intermediate frame must be mid-transition for both surfaces.
         expect(nodeWidths.some((width) => width !== 720 && width !== 420)).toBe(true);
         expect(panelWidths.some((width) => width !== 920 && width !== 660)).toBe(true);
-        expect(panelFrames.some((sample) => sample.panel!.animations > 0)).toBe(true);
+        // 面板不再跑自己的 CSS 过渡（逐帧写 transform 会不断重启过渡，反而抖），
+        // 改由 rAF 跟随节点；下面的贴附断言验证它逐帧都贴着节点。
+        expect(new Set(panelFrames.map((sample) => Math.round(sample.panel!.top))).size).toBeGreaterThan(1);
         expect(panelFrames.some((sample) => sample.node!.animations > 0)).toBe(true);
         // Every sampled paint, including intermediate ones, keeps the panel
         // attached to the node of that same frame.
         for (const sample of panelFrames) {
             const node = sample.node!;
+            const g = Math.abs(sample.panel!.top - (node.bottom + 16));
+            if (g > 1.5) console.log("GAP", sample.frame, g.toFixed(2), "nodeH", node.height.toFixed(0), "panelTop", sample.panel!.top.toFixed(1));
             expect(Math.abs(sample.panel!.top - (node.bottom + 16))).toBeLessThan(1.5);
             expect(Math.abs(sample.panel!.left + sample.panel!.width / 2 - (node.left + node.width / 2))).toBeLessThan(1.5);
         }
@@ -265,7 +277,8 @@ describe("canvas node panel linkage", () => {
         expect(measurement.node.width).toBeCloseTo(420, 0);
         expect(measurement.node.height).toBeCloseTo(420, 0);
         expect(measurement.inline.width).toBe("660px");
-        expect(measurement.productionStyle.transitionDuration).toBe("0.34s, 0.34s");
+        // 落定后过渡重新交还给 CSS，供下一次几何变化使用。
+        expect(measurement.productionStyle.transitionDuration).not.toBe("0s");
         expect(measurement.productionStyle.animations).toBe(0);
         // Width and position come from the same layout pass; a stale width here
         // is what produces an off-center panel.
@@ -348,8 +361,8 @@ describe("canvas node panel linkage", () => {
         expect(released.productionStyle.animations).toBe(0);
         expect(released.productionStyle.nodeAnimations).toBe(0);
         // Once the drop has painted, the next geometry change animates again.
-        expect(released.productionStyle.transitionDuration).toBe("0.34s, 0.34s");
-        expect(released.productionStyle.nodeTransitionDuration).toBe("0.34s, 0.34s, 0.34s");
+        expect(released.productionStyle.transitionDuration).not.toBe("0s");
+        expect(released.productionStyle.nodeTransitionDuration.startsWith("0s")).toBe(false);
     });
 
     test("manual node resize keeps both surfaces at 0s and re-enables afterwards", async () => {
@@ -376,8 +389,8 @@ describe("canvas node panel linkage", () => {
         await settle();
         await settle();
         const settled = await measure();
-        expect(settled.productionStyle.transitionDuration).toBe("0.34s, 0.34s");
-        expect(settled.productionStyle.nodeTransitionDuration).toBe("0.34s, 0.34s, 0.34s");
+        expect(settled.productionStyle.transitionDuration).not.toBe("0s");
+        expect(settled.productionStyle.nodeTransitionDuration.startsWith("0s")).toBe(false);
         expectPanelAttachedBelow(settled);
     });
 
@@ -420,8 +433,8 @@ describe("canvas node panel linkage", () => {
         await settle();
         await settle();
         const restored = await measure();
-        expect(restored.productionStyle.transitionDuration).toBe("0.34s, 0.34s");
-        expect(restored.productionStyle.nodeTransitionDuration).toBe("0.34s, 0.34s, 0.34s");
+        expect(restored.productionStyle.transitionDuration).not.toBe("0s");
+        expect(restored.productionStyle.nodeTransitionDuration.startsWith("0s")).toBe(false);
         expect(restored.productionStyle.animations).toBe(0);
         expectPanelAttachedBelow(restored);
 
@@ -503,9 +516,37 @@ describe("canvas node panel linkage", () => {
             };
         });
         expect(after.resizing).toBe(false);
-        expect(after.panelTransition).toBe("0.34s, 0.34s");
-        expect(after.nodeTransition).toBe("0.34s, 0.34s, 0.34s");
+        expect(after.panelTransition).not.toBe("0s");
+        expect(after.nodeTransition.startsWith("0s")).toBe(false);
         expect(after.panelAnimations).toBe(0);
         expect(after.nodeAnimations).toBe(0);
     });
+
+    // 1:1 ↔ 9:16 尺寸差最大最容易被看见，但其它比例同样会暴露错位。
+    // 这里跑完整矩阵：每个比例切到其余每一个，逐帧量面板与节点的贴合度。
+    test("every aspect ratio switch keeps the panel attached frame by frame", async () => {
+        const ratios = ["1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16"];
+        const failures: string[] = [];
+
+        for (const from of ratios) {
+            for (const to of ratios) {
+                if (from === to) continue;
+                await mountHarness({ metadata: { size: from } } as never);
+                await settle();
+                const samples = await recordFrames(30, { atFrame: 2, kind: "patch-ratio", size: to });
+                const frames = samples.filter((sample) => sample.hasPanel);
+                for (const sample of frames) {
+                    const node = sample.node!;
+                    const topGap = Math.abs(sample.panel!.top - (node.bottom + 16));
+                    const centerGap = Math.abs(sample.panel!.left + sample.panel!.width / 2 - (node.left + node.width / 2));
+                    if (topGap > 1.5 || centerGap > 1.5) {
+                        failures.push(`${from} -> ${to} frame ${sample.frame}: top ${topGap.toFixed(1)}px, center ${centerGap.toFixed(1)}px`);
+                        break;
+                    }
+                }
+            }
+        }
+
+        expect(failures).toEqual([]);
+    }, 120_000);
 });

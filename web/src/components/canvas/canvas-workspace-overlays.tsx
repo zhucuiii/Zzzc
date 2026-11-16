@@ -126,18 +126,42 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
         let disposed = false;
         let transitionEnabled: boolean | undefined;
         let suppressTransition = false;
+        // 跟随期间面板由逐帧写入驱动，不走 CSS 过渡。
+        let following = false;
+        let followFrame: number | null = null;
+        // 上一次的目标几何，用来区分"几何真的变了"与"只是恢复性刷新"。
+        let lastTargetKey = "";
         const isInteracting = () => container.dataset.canvasNodeDragging === "true"
             || container.dataset.canvasViewportInteracting === "true"
             || container.dataset.canvasNodeResizing === "true";
         const syncPanelTransition = () => {
-            const next = animatedRef.current && !isDragging && !isInteracting() && !suppressTransition;
+            // 拖拽/缩放/平移期间由调用方直接贴位，跟随态要退出，
+            // 否则手势结束后面板会一直停在"无过渡"，下一次几何变化就变成硬跳。
+            if (following && (isDragging || isInteracting())) {
+                following = false;
+                if (followFrame !== null) cancelAnimationFrame(followFrame);
+                followFrame = null;
+            }
+            // 跟随期间面板必须逐帧贴住节点，自身不能再跑一条过渡 ——
+            // 每帧写 transform 会不断重启过渡，反而抖。
+            const next = animatedRef.current && !isDragging && !isInteracting() && !suppressTransition && !following;
             if (next === transitionEnabled) return;
             transitionEnabled = next;
             if (next) panel.dataset.panelAnimated = "true";
             else delete panel.dataset.panelAnimated;
         };
+        // update() 先于 startFollow 定义，用这个中转避免循环依赖。
+        let requestFollow: () => void = () => {};
         const update = (nextViewport: ViewportTransform) => {
             liveViewport = nextViewport;
+            // 只在几何真的变了才进入跟随：手势结束、窗口 resize 这类"恢复"
+            // 调用不应该把面板重新钉成无过渡，否则下一次切比例会变成硬跳。
+            const targetKey = `${node.position.x},${node.position.y},${node.width},${node.height},${nextViewport.x},${nextViewport.y},${nextViewport.k}`;
+            const geometryChanged = targetKey !== lastTargetKey;
+            lastTargetKey = targetKey;
+            // 几何要变，先声明进入跟随态，syncPanelTransition 才能在同一次
+            // 写入里关掉面板过渡 —— 顺序反了就会先起一条过渡再关掉，抖一下。
+            if (geometryChanged) requestFollow();
             // Toggle before writing geometry so a drag/pan/resize frame never
             // starts a transition toward the frame's target.
             syncPanelTransition();
@@ -149,12 +173,66 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
             // commit that starts a geometry transition; using it would pin the
             // panel destination to the pre-change geometry and break the
             // node/panel sync. Props describe the transition targets.
-            const nodeElement = isInteracting() ? container.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(node.id)}"]`) : null;
+            const nodeElement = isInteracting() ? findNodeElement() : null;
             const position = nodeElement
                 ? getAttachedNodePanelPosition(nodeElement, container, nextWidth, panelHeight, keepBelowNode, avoidBottomDock)
                 : getNodePanelPosition(node, nextViewport, viewportSize, nextWidth, panelHeight, liveDragOffset, keepBelowNode, avoidBottomDock);
             panel.style.transform = `translate3d(${position.left}px, ${position.top}px, 0)`;
+            // 提交后同帧再贴一次：节点的新宽高刚进样式，读到的就是过渡起点，
+            // 面板不会在过渡第一帧还挂在旧位置。
+            if (following) stickToNode();
         };
+        const findNodeElement = () => container.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(node.id)}"]`);
+        // 切比例时节点自己在做 260ms 宽高过渡，而按 props 的目标宽高算出来的
+        // 面板位置会直接跳到终点 —— 节点还在半路，面板已经先到了，1:1 ↔ 9:16
+        // 这种尺寸差最大的切换最明显。过渡期间逐帧读节点的真实 rect，
+        // 两边走同一条曲线；连续两帧不动就自停，把控制权交回 CSS 过渡。
+        let followKey = "";
+        let followStillFrames = 0;
+        // 把面板贴到节点当前所在的位置，返回本帧的 rect 标识。
+        const stickToNode = () => {
+            const nodeElement = findNodeElement();
+            if (!nodeElement) return null;
+            const rect = nodeElement.getBoundingClientRect();
+            const nextWidth = resolveNodePanelWidthFromPixels(
+                rect.width / liveViewport.k,
+                liveViewport,
+                panelWidth, panelMinWidth, panelMaxWidth, panelWidthScale,
+            );
+            if (panel.style.width !== `${nextWidth}px`) panel.style.width = `${nextWidth}px`;
+            const position = getAttachedNodePanelPosition(nodeElement, container, nextWidth, panelHeight, keepBelowNode, avoidBottomDock);
+            panel.style.transform = `translate3d(${position.left}px, ${position.top}px, 0)`;
+            return `${rect.left},${rect.top},${rect.width},${rect.height}`;
+        };
+        const runFollowFrame = () => {
+            followFrame = null;
+            if (disposed || !panel.isConnected) return;
+            const key = stickToNode();
+            if (!key) return;
+            if (key === followKey) {
+                followStillFrames += 1;
+                if (followStillFrames >= 2) {
+                    // 节点停稳：让出控制权，之后的变化重新交给 CSS 过渡。
+                    following = false;
+                    syncPanelTransition();
+                    return;
+                }
+            } else {
+                followStillFrames = 0;
+                followKey = key;
+            }
+            followFrame = requestAnimationFrame(runFollowFrame);
+        };
+        const startFollow = () => {
+            following = true;
+            // 当场关掉面板过渡，避免下一帧写入时先重启一次过渡。
+            syncPanelTransition();
+            if (followFrame !== null) return;
+            followKey = "";
+            followStillFrames = 0;
+            followFrame = requestAnimationFrame(runFollowFrame);
+        };
+        requestFollow = startFollow;
         update(viewport);
         // Enable the geometry transition only after the first painted frame, so
         // the panel's initial placement is never animated.
@@ -195,6 +273,7 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
         return () => {
             disposed = true;
             if (enableFrame !== null) cancelAnimationFrame(enableFrame);
+            if (followFrame !== null) cancelAnimationFrame(followFrame);
             attributeObserver.disconnect();
             resizeObserver.disconnect();
             unsubscribeViewport();
@@ -222,6 +301,12 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
             {children}
         </div>
     );
+}
+
+// 过渡期间用节点的实时世界宽度算面板宽度，让两边逐帧对齐。
+function resolveNodePanelWidthFromPixels(worldWidth: number, viewport: ViewportTransform, requestedWidth?: number, minWidth = 660, maxWidth = 920, widthScale = 1.5) {
+    if (requestedWidth) return requestedWidth;
+    return clamp(Math.round(worldWidth * viewport.k * widthScale), minWidth, maxWidth);
 }
 
 function resolveNodePanelWidth(node: CanvasNodeData, viewport: ViewportTransform, requestedWidth?: number, minWidth = 660, maxWidth = 920, widthScale = 1.5) {

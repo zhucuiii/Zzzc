@@ -35,7 +35,7 @@ describe("canvas media prompt panel placement", () => {
         expect(source).toContain("keepBelowNode={dialogNode.type === CanvasNodeType.Image || dialogNode.type === CanvasNodeType.Video || dialogNode.type === CanvasNodeType.Audio}");
     });
 
-    test("computes the first-selection position during render instead of relying on a (0,0) default", () => {
+    test("never ships a (0,0) parked position and leaves geometry to the layout effect", () => {
         const node = {
             id: "image-ratio",
             type: CanvasNodeType.Image,
@@ -48,12 +48,17 @@ describe("canvas media prompt panel placement", () => {
             createElement(CanvasNodePanelOverlay, { node, viewport: { x: 0, y: 0, k: 1 }, containerRef, keepBelowNode: true }, createElement("span")),
         );
 
-        // 920px panel centered under the 720px node at (240,120).
-        expect(html).toContain("transform:translate3d(140px, 541px, 0)");
-        expect(html).toContain("width:920px");
+        // 位置和宽度全部由 useLayoutEffect 在绘制前写入，渲染阶段不写。
+        // 这也正是当初"面板从错误位置飞进来"的根因：渲染时 containerRef 还是
+        // null，clientWidth 为 0，算出来是错的位置。
         expect(html).not.toContain("translate3d(0px, 0px, 0)");
-        // The geometry transition is enabled only after the first paint.
+        expect(html).not.toContain("width:920px");
+        // 过渡只在首次绘制之后才打开，所以初始标记里不该有。
         expect(html).not.toContain("data-panel-animated");
+        // 位置可以复现：目标位置与该节点在视口中的几何一致。
+        const position = getNodePanelPosition(node, { x: 0, y: 0, k: 1 }, { width: 1400, height: 900 }, 920, 0, undefined, true);
+        expect(position.left).toBe(140);
+        expect(position.top).toBe(541);
     });
 
     test("video trim panel stays above the main dock without flipping over the node", () => {
